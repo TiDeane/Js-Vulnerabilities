@@ -25,12 +25,12 @@ c -> source (vulnerabilidade A)
 def main(vulnDict, root):
     global vuln_dict
     vuln_dict = vulnDict
-    parseVulnerabilityDict(vuln_dict)
+    #parseVulnerabilityDict(vuln_dict)
     print(labels)
     traverse(root)
     print(labels)
     with open(f"test_tree.json", "w") as outfile: 
-        json.dump(labels, outfile, indent=2)
+        json.dump(root, outfile, indent=2)
     print(root['vulns'])
 
 def parseVulnerabilityDict(vulnDict: List):   # Adds vulnerability patterns to saved labels
@@ -63,12 +63,14 @@ def match_pattern(identifier):
     
     for pattern in vuln_dict:
         print("pattern sources: " + str(pattern['sources']))
-        print("identifier: " + str(identifier))
-        if (identifier in pattern['sources']):
-            id_sources += pattern['vulnerability']
+        print("identifier: " + str(identifier['name']))
+        if (identifier['name'] in pattern['sources']):
+            id_sources.append((pattern['vulnerability'], identifier['name'], identifier['loc']['start']['line']))
+            print(identifier['loc']['start']['line'])
             #print(f"added {pattern['vulnerability']} to ")
-        elif (identifier in pattern['sinks']):
-            id_sinks += pattern['vulnerability']
+        elif (identifier['name'] in pattern['sinks']):
+            id_sinks.append((pattern['vulnerability'], identifier['name'], identifier['loc']['start']['line']))
+            print(identifier['loc']['start']['line'])
     
     return id_sources, id_sinks
             
@@ -127,8 +129,9 @@ def label_assignment(node):
         node['vulns'] += right['vulns']      # Accumulates vulnerabilities of the right
         node['sources'] += left['sources'] + right['sources']
         node['sinks'] += left['sinks'] + right['sinks']
-    
-        explicit_vulnerabilities = list(set(left['sinks']).intersection(right['sources'])) # Detects explicit vulnerabilities if there are sinks in the left and sources in the right that match
+        explicit_vulnerabilities = find_vuln(left['sinks'], right['sources'])
+        #explicit_vulnerabilities = list(set(left['sinks']).intersection(right['sources'])) # Detects explicit vulnerabilities if there are sinks in the left and sources in the right that match
+        
         node['vulns'] += explicit_vulnerabilities
         labels[left['name']] = node
         
@@ -136,7 +139,7 @@ def label_identifier_left(node):
     if isinstance(node, dict):
         identifier = node['name']
         print("Labeling identifier (left) " + identifier)
-        node['sources'], node['sinks'] = match_pattern(identifier)
+        node['sources'], node['sinks'] = match_pattern(node)
 
 def label_identifier_right(node):
     if isinstance(node, dict):
@@ -163,8 +166,9 @@ def label_call(node):
         node['sources'] = []
         node['sinks'] = []
         print("callee = " + str(callee))
-        traverse(callee, False)
+        traverse(callee)
         print("callee sources: " + str(callee['sources']))
+        print("callee sinks: " + str(callee['sinks']))
         node['sources'] += callee['sources']   # Accumulates the vulnerabilites of the expression it states
         node['sinks'] += callee['sinks']
 
@@ -175,5 +179,16 @@ def label_call(node):
             traverse(arg, False)
             node['sources'] += arg['sources']
             node['sinks'] += arg['sinks']
-            explicit_vulnerabilities += (set(callee['sinks']).intersection(arg['sources'])) # Detects explicit vulnerabilities if there are sinks in the callee and sources in the arguments that match
+            explicit_vulnerabilities += find_vuln(callee['sinks'], arg['sources'])
+            #explicit_vulnerabilities += (set(callee['sinks']).intersection(arg['sources'])) # Detects explicit vulnerabilities if there are sinks in the callee and sources in the arguments that match
         node['vulns'] += explicit_vulnerabilities
+
+
+def find_vuln(sinks, sources):
+    for si in sinks:
+        for so in sources:
+            if si == () or so == () or si[0] != so[0]:
+                return ()
+            # [vulnerability, source_id, source_line, sink_id, sink_line]
+            return [(si[0], so[1], so[2], si[1], si[2])]
+    return ()
