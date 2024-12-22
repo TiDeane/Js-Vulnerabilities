@@ -185,10 +185,11 @@ def label_call(node):
 
 
 def find_vuln(sinks, sources):
+    ret = []
     for si in sinks:
         for so in sources:
             if si == () or so == () or si[0] != so[0]:
                 return ()
             # [vulnerability, source_id, source_line, sink_id, sink_line]
-            return [(si[0], so[1], so[2], si[1], si[2])]
-    return ()
+            ret += [(si[0], so[1], so[2], si[1], si[2])]
+    return ret
