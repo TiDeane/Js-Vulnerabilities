@@ -2,6 +2,7 @@ import esprima
 import sys
 import json
 from typing import Dict, List
+from js_labeler import main
 
 global vuln_dict
 
@@ -22,3 +23,5 @@ print(vuln_dict)
 # Save dict to json
 with open(f"{sys.argv[1]}_tree.json", "w") as outfile: 
     json.dump(ast_dict, outfile, indent=2)
+
+main(vuln_dict, ast_dict)
