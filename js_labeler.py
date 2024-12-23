@@ -57,7 +57,7 @@ def match_sources(identifier):
         print("pattern sources: " + str(pattern['sources']))
         print("identifier: " + str(identifier['name']))
         if (identifier['name'] in pattern['sources']):
-            id_sources.append([pattern['vulnerability'], identifier['name'], identifier['loc']['start']['line']])
+            id_sources.append((pattern['vulnerability'], identifier['name'], identifier['loc']['start']['line']))
             print(identifier['loc']['start']['line'])
     
     return id_sources
@@ -84,7 +84,7 @@ def match_pattern(identifier):
         print("pattern sources: " + str(pattern['sources']))
         print("identifier: " + str(identifier['name']))
         if (identifier['name'] in pattern['sources']):
-            id_sources.append([pattern['vulnerability'], identifier['name'], identifier['loc']['start']['line']])
+            id_sources.append((pattern['vulnerability'], identifier['name'], identifier['loc']['start']['line']))
             print(identifier['loc']['start']['line'])
             #print(f"added {pattern['vulnerability']} to ")
         elif (identifier['name'] in pattern['sinks']):
@@ -218,5 +218,5 @@ def find_vuln(sinks, sources):
             if si == [] or so == [] or si[0] != so[0]:
                 return ()
             # [vulnerability, source_id, source_line, sink_id, sink_line]
-            ret += [[si[0], so[1], so[2], si[1], si[2]]]
+            ret += [(si[0], so[1], so[2], si[1], si[2])]
     return ret
