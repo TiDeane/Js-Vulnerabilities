@@ -33,6 +33,7 @@ def main(vulnDict, root):
         json.dump(root, outfile, indent=2)
     print(root['vulns'])
 
+
 def parseVulnerabilityDict(vulnDict: List):   # Adds vulnerability patterns to saved labels
     for pattern in vuln_dict:
         for source_id in pattern['sources']:
@@ -49,23 +50,41 @@ def parseVulnerabilityDict(vulnDict: List):   # Adds vulnerability patterns to s
                 labels[sink_id] = tmp                                    
 
 
-def match_pattern(identifier):
-    
+def match_sources(identifier):
     id_sources = []
-    id_sinks = []
-
-    """
-    if identifier in sources.keys():
-        id_sources += sources[identifier]
-    elif identifier in sinks.keys():
-        id_sinks += sinks[identifier]
-    """
     
     for pattern in vuln_dict:
         print("pattern sources: " + str(pattern['sources']))
         print("identifier: " + str(identifier['name']))
         if (identifier['name'] in pattern['sources']):
-            id_sources.append((pattern['vulnerability'], identifier['name'], identifier['loc']['start']['line']))
+            id_sources.append([pattern['vulnerability'], identifier['name'], identifier['loc']['start']['line']])
+            print(identifier['loc']['start']['line'])
+    
+    return id_sources
+
+
+def match_sinks(identifier):
+    id_sinks = []
+    
+    for pattern in vuln_dict:
+        print("pattern sources: " + str(pattern['sources']))
+        print("identifier: " + str(identifier['name']))
+        if (identifier['name'] in pattern['sinks']):
+            id_sinks.append((pattern['vulnerability'], identifier['name'], identifier['loc']['start']['line']))
+            print(identifier['loc']['start']['line'])
+    
+    return id_sinks
+
+
+def match_pattern(identifier):
+    id_sources = []
+    id_sinks = []
+    
+    for pattern in vuln_dict:
+        print("pattern sources: " + str(pattern['sources']))
+        print("identifier: " + str(identifier['name']))
+        if (identifier['name'] in pattern['sources']):
+            id_sources.append([pattern['vulnerability'], identifier['name'], identifier['loc']['start']['line']])
             print(identifier['loc']['start']['line'])
             #print(f"added {pattern['vulnerability']} to ")
         elif (identifier['name'] in pattern['sinks']):
@@ -134,22 +153,30 @@ def label_assignment(node):
         
         node['vulns'] += explicit_vulnerabilities
         labels[left['name']] = node
+        print(f"assignment left's sources: {left['sources']}, right's sources: {right['sources']}, root's sources: {node['sources']}")
         
 def label_identifier_left(node):
     if isinstance(node, dict):
         identifier = node['name']
         print("Labeling identifier (left) " + identifier)
-        node['sources'], node['sinks'] = match_pattern(node)
+        if 'sources' not in node:
+            node['sources'] = []
+        node['sinks'] = match_sinks(node)
+        print(f"node {node['name']}'s sources: {node['sources']}")
 
 def label_identifier_right(node):
     if isinstance(node, dict):
-        saved_label = labels[node['name']]
-        print("Labeling identifier (right) " + str(saved_label))
-        node['vulns'] = saved_label['vulns']
-        node['sources'] = saved_label['sources']
-        node['sinks'] = saved_label['sinks']
-        print(f"identifier label {node['name']}'s sources: {saved_label['sources']}")
-        print(f"node {node['name']}'s sources: {node['sources']}")
+        print(f"{node['name']} in labels? - {node['name'] in labels}")
+        if node['name'] in labels:
+            saved_label = labels[node['name']]
+            print("Labeling identifier (right) " + str(saved_label))
+            node['vulns'] = saved_label['vulns']
+            node['sources'] = match_sources(node) + saved_label['sources']
+            node['sinks'] = saved_label['sinks']
+            print(f"identifier label {node['name']}'s sources: {saved_label['sources']}")
+            print(f"node {node['name']}'s sources: {node['sources']}")
+        else:
+            node['sources'], node['sinks'] = match_pattern(node)
 
 def label_literal(node):
     print("Labeling literal")
@@ -166,7 +193,7 @@ def label_call(node):
         node['sources'] = []
         node['sinks'] = []
         print("callee = " + str(callee))
-        traverse(callee)
+        traverse(callee, False)
         print("callee sources: " + str(callee['sources']))
         print("callee sinks: " + str(callee['sinks']))
         node['sources'] += callee['sources']   # Accumulates the vulnerabilites of the expression it states
@@ -188,8 +215,8 @@ def find_vuln(sinks, sources):
     ret = []
     for si in sinks:
         for so in sources:
-            if si == () or so == () or si[0] != so[0]:
+            if si == [] or so == [] or si[0] != so[0]:
                 return ()
             # [vulnerability, source_id, source_line, sink_id, sink_line]
-            ret += [(si[0], so[1], so[2], si[1], si[2])]
+            ret += [[si[0], so[1], so[2], si[1], si[2]]]
     return ret
