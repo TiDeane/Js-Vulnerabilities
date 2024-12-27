@@ -1,102 +1,152 @@
+from __future__ import annotations
 from typing import List, Dict
 import json
+import copy
 
-# Associates identifiers with whether they are sources, sinks, or neither
-# If they are a source or sink, 'vulns' holds what vulnerability they relate to
-labels = {}
+sequentialIds = {}
 
-"""
-sources: Dict[str, str] = {} # Key = source, Value = name of vulnerability
-sinks: Dict[str, str] = {} # Key = sink, Value = name of vulnerability
-sanitizers: Dict[str, str] = {} # Key = sanitizer, Value = name of vulnerability
-is_implicit: Dict[str, str] = {} # Key = name of vulnerability, Value = "yes" or "no"
+def getSequentialId(vuln):
+    if vuln in sequentialIds:
+        sequentialIds[vuln] += 1
+    else:
+        sequentialIds[vuln] = 1
+    
+    return vuln + "_" + str(sequentialIds[vuln])
 
-c -> source (vulnerabilidade A)
+class Label:
+    def __init__(self, line):
+        self.line = line
 
-    tmp = {'sources': ['A'], 'sinks': []}
-    labels['c'] = tmp
+    def to_dict(self):
+        """Convert Label object to a dictionary."""
+        return {
+            "line": self.line
+        }
 
-    saved_labels = labels[identifier['name']]
-    saved_labels['sources']
-    saved_labels['sinks']
-"""
+    def __str__(self):
+        """Define what print() outputs for a Label object."""
+        return json.dumps(self.to_dict(), indent=4)
+        
+class Vuln(Label):
+    def __init__(self, vuln, source, sourceline, sink, sinkline, unsanitized_flows, sanitized_flows, implicit, line):
+        super().__init__(line)
+        self.vuln = vuln
+        self.source = source
+        self.sourceline = sourceline
+        self.sink = sink
+        self.sinkline = sinkline
+        self.unsanitized_flows = unsanitized_flows
+        self.sanitized_flows = sanitized_flows
+        self.implicit = implicit
 
+    def to_dict(self):
+        """Convert Vuln object to a dictionary."""
+        return {
+            "vulnerability": self.vuln,
+            "source": [self.source, self.sourceline],
+            "sink": [self.sink, self.sinkline],
+            "unsanitized_flows": self.unsanitized_flows,
+            "sanitized_flows": self.sanitized_flows,
+            "implicit": self.implicit,
+            "line": self.line
+        }
 
-def main(vulnDict, root):
-    global vuln_dict
-    vuln_dict = vulnDict
-    #parseVulnerabilityDict(vuln_dict)
-    print(labels)
-    traverse(root)
-    print(labels)
-    with open(f"test_tree.json", "w") as outfile: 
-        json.dump(root, outfile, indent=2)
-    print(root['vulns'])
+    def __str__(self):
+        return json.dumps(self.to_dict(), indent=4)
 
+class Source(Label):
+    def __init__(self, vuln, source, line):
+        super().__init__(line)
+        self.vuln = vuln
+        self.source = source
+        self.unsanitized = "yes"
+        self.sanitized = []
 
-def parseVulnerabilityDict(vulnDict: List):   # Adds vulnerability patterns to saved labels
+    def to_dict(self):
+        """Convert Source object to a dictionary."""
+        return {
+            "vulnerability": ["SOURCE_FOR_" + self.vuln, self.line],
+            "source": self.source,
+            "unsanitized": self.unsanitized,
+            "sanitized": self.sanitized
+        }
+
+    def __str__(self):
+        return json.dumps(self.to_dict(), indent=4)
+        
+class Sink(Label):
+    def __init__(self, vuln, sink, line):
+        super().__init__(line)
+        self.vuln = vuln
+        self.sink = sink
+
+    def to_dict(self):
+        """Convert Sink object to a dictionary."""
+        return {
+            "vulnerability": ["SINK_FOR_" + self.vuln, self.line],
+            "sink": self.sink
+        }
+
+    def __str__(self):
+        return json.dumps(self.to_dict(), indent=4)
+
+class LabelList:
+    def __init__(self):
+        self.sources = []
+        self.sinks = []
+        self.vulns = []
+        
+    def mergeWith(self, other: LabelList):
+        self.sources += copy.deepcopy(other.sources)
+        self.sinks += copy.deepcopy(other.sinks)
+        self.vulns += copy.deepcopy(other.vulns)
+        
+    @staticmethod
+    def findExplicitVulns(sinks, sources, line):
+        vulns = []
+        for sink in sinks:
+            for source in sources:
+                if sink.vuln == source.vuln:
+                    vulns.append(Vuln(getSequentialId(sink.vuln), source.source, source.line, sink.sink, sink.line, source.unsanitized, source.sanitized, "no", line))
+        
+        return vulns
+
+    def to_dict(self):
+        """Convert the LabelList to a dictionary."""
+        return {
+            "vulns": [vuln.to_dict() for vuln in self.vulns],
+            "sources": [source.to_dict() for source in self.sources],
+            "sinks": [sink.to_dict() for sink in self.sinks],
+        }
+
+    def __str__(self):
+        """Define what print() outputs for a LabelList object."""
+        return json.dumps(self.to_dict(), indent=4)              
+    
+def searchVulnerabilityDict(identifier):   # Returns the vulnerability patterns associated to the identifier
+    source_patterns = []
+    sink_patterns = []
     for pattern in vuln_dict:
         for source_id in pattern['sources']:
-            if source_id in labels:
-                labels[source_id]['sources'] += [pattern['vulnerability']]
-            else:
-                tmp = {'sources': [pattern['vulnerability']], 'sinks': [], 'vulns': []}
-                labels[source_id] = tmp
+            if source_id == identifier:
+                source_patterns.append(pattern)
         for sink_id in pattern['sinks']:
-            if sink_id in labels:
-                labels[sink_id]['sinks'] += [pattern['vulnerability']]
-            else:
-                tmp = {'sources': [], 'sinks': [pattern['vulnerability']], 'vulns': []}
-                labels[sink_id] = tmp                                    
+            if sink_id == identifier:
+                sink_patterns.append(pattern)
+                
+    return source_patterns, sink_patterns
 
-
-def match_sources(identifier):
-    id_sources = []
-    
+def getVulnerabilityPattern(vuln):  # Gets the vulnerability pattern corresponding to that vulnerability
     for pattern in vuln_dict:
-        print("pattern sources: " + str(pattern['sources']))
-        print("identifier: " + str(identifier['name']))
-        if (identifier['name'] in pattern['sources']):
-            id_sources.append((pattern['vulnerability'], identifier['name'], identifier['loc']['start']['line']))
-            print(identifier['loc']['start']['line'])
-    
-    return id_sources
+        if pattern['vulnerability'] == vuln:
+            return pattern
 
 
-def match_sinks(identifier):
-    id_sinks = []
-    
-    for pattern in vuln_dict:
-        print("pattern sources: " + str(pattern['sources']))
-        print("identifier: " + str(identifier['name']))
-        if (identifier['name'] in pattern['sinks']):
-            id_sinks.append((pattern['vulnerability'], identifier['name'], identifier['loc']['start']['line']))
-            print(identifier['loc']['start']['line'])
-    
-    return id_sinks
+new_identifiers = {}  # Dict of identifier to their LabelList to keep track of new declared identifiers and the vulnerabilities
 
-
-def match_pattern(identifier):
-    id_sources = []
-    id_sinks = []
-    
-    for pattern in vuln_dict:
-        print("pattern sources: " + str(pattern['sources']))
-        print("identifier: " + str(identifier['name']))
-        if (identifier['name'] in pattern['sources']):
-            id_sources.append((pattern['vulnerability'], identifier['name'], identifier['loc']['start']['line']))
-            print(identifier['loc']['start']['line'])
-            #print(f"added {pattern['vulnerability']} to ")
-        elif (identifier['name'] in pattern['sinks']):
-            id_sinks.append((pattern['vulnerability'], identifier['name'], identifier['loc']['start']['line']))
-            print(identifier['loc']['start']['line'])
-    
-    return id_sources, id_sinks
-            
-    
+          
 # Traverses every node in the AST
 def traverse(node, left = True):
-    #print("Inside traverse: " + str(node))
     if isinstance(node, dict):
         if node.get('type') == 'Program':
             label_program(node)
@@ -119,104 +169,96 @@ def traverse(node, left = True):
 def label_program(node):
     print("Labeling program")
     if isinstance(node, dict):
-        node['vulns'] = []         
+        node['LabelList'] = LabelList()         
         for stmt in node['body']:
             traverse(stmt)
-            node['vulns'] += stmt['vulns']   # Accumulates all found vulnerabilities
+            node['LabelList'].mergeWith(stmt['LabelList'])   # Accumulates all found vulnerabilities
 
 def label_expressionstmt(node):
     print("Labeling expressionstmt")
     if isinstance(node, dict):
-        node['vulns'] = []
-        node['sinks'] = []
-        node['sources'] = []
+        node['LabelList'] = LabelList()
         expression = node['expression']
         traverse(expression)
-        node['vulns'] += expression['vulns']
-        node['sources'] += expression['sources']   # Accumulates the vulnerabilites of the expression it states
+        node['LabelList'].mergeWith(expression['LabelList'])  # Accumulates the vulnerabilites of the expression it states
 
 def label_assignment(node):
     print("Labeling assignment")
     if isinstance(node, dict):
-        node['vulns'] = []
-        node['sinks'] = []
-        node['sources'] = []
+        node['LabelList'] = LabelList()
         left = node['left']
         right = node['right']
         traverse(left)
         traverse(right, False)
-        node['vulns'] += right['vulns']      # Accumulates vulnerabilities of the right
-        node['sources'] += left['sources'] + right['sources']
-        node['sinks'] += left['sinks'] + right['sinks']
-        explicit_vulnerabilities = find_vuln(left['sinks'], right['sources'])
-        #explicit_vulnerabilities = list(set(left['sinks']).intersection(right['sources'])) # Detects explicit vulnerabilities if there are sinks in the left and sources in the right that match
+        node['LabelList'].mergeWith(left['LabelList'])      # Accumulate vulnerabilities of both sides of the assignment
+        node['LabelList'].mergeWith(right['LabelList'])
+        explicit_vulnerabilities = LabelList.findExplicitVulns(left['LabelList'].sinks, right['LabelList'].sources, node['loc']['start']['line'])  # Add new explicit vulnerabilities found
+        node['LabelList'].vulns += explicit_vulnerabilities
         
-        node['vulns'] += explicit_vulnerabilities
-        labels[left['name']] = node
-        print(f"assignment left's sources: {left['sources']}, right's sources: {right['sources']}, root's sources: {node['sources']}")
+        new_identifiers[left['name']] = node['LabelList']  # Add left identifier and LabelList for future use
+             
         
 def label_identifier_left(node):
     if isinstance(node, dict):
+        node['LabelList'] = LabelList()
         identifier = node['name']
         print("Labeling identifier (left) " + identifier)
-        if 'sources' not in node:
-            node['sources'] = []
-        node['sinks'] = match_sinks(node)
-        print(f"node {node['name']}'s sources: {node['sources']}")
+        if identifier in new_identifiers:
+            node['LabelList'].mergeWith(new_identifiers['LabelList'])
+        else:
+            source_patterns, sink_patterns = searchVulnerabilityDict(identifier)
+            for pattern in source_patterns:
+                node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
+            for pattern in sink_patterns:
+                node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, node['loc']['start']['line']))
+                
+        print(f"node {node['name']}'s sources: {node['LabelList'].sources}")
 
 def label_identifier_right(node):
     if isinstance(node, dict):
-        print(f"{node['name']} in labels? - {node['name'] in labels}")
-        if node['name'] in labels:
-            saved_label = labels[node['name']]
-            print("Labeling identifier (right) " + str(saved_label))
-            node['vulns'] = saved_label['vulns']
-            node['sources'] = match_sources(node) + saved_label['sources']
-            node['sinks'] = saved_label['sinks']
-            print(f"identifier label {node['name']}'s sources: {saved_label['sources']}")
-            print(f"node {node['name']}'s sources: {node['sources']}")
+        print(f"{node['name']} in new_identfiers? - {node['name'] in new_identifiers}")
+        node['LabelList'] = LabelList()
+        identifier = node['name']
+        if identifier in new_identifiers:
+            node['LabelList'].mergeWith(new_identifiers[identifier])
         else:
-            node['sources'], node['sinks'] = match_pattern(node)
+            source_patterns, sink_patterns = searchVulnerabilityDict(identifier)
+            for pattern in source_patterns:
+                node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
+            for pattern in sink_patterns:
+                node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, node['loc']['start']['line']))
 
 def label_literal(node):
     print("Labeling literal")
     if isinstance(node, dict):
-        node['sources'] = []
-        node['sinks'] = []
-        node['vulns'] = []
+        node['LabelList'] = LabelList()
 
 def label_call(node):
     print("Labeling call")
     if isinstance(node, dict):
         callee = node["callee"]
-        node['vulns'] = []
-        node['sources'] = []
-        node['sinks'] = []
+        node['LabelList'] = LabelList()
         print("callee = " + str(callee))
         traverse(callee, False)
-        print("callee sources: " + str(callee['sources']))
-        print("callee sinks: " + str(callee['sinks']))
-        node['sources'] += callee['sources']   # Accumulates the vulnerabilites of the expression it states
-        node['sinks'] += callee['sinks']
+        print("callee sources: " + str(callee['LabelList'].sources))
+        print("callee sinks: " + str(callee['LabelList'].sinks))
+        node['LabelList'].mergeWith(callee['LabelList'])   # Accumulates the vulnerabilites of the expression it states
 
         explicit_vulnerabilities = []
         arguments = node["arguments"]
 
         for arg in arguments:
             traverse(arg, False)
-            node['sources'] += arg['sources']
-            node['sinks'] += arg['sinks']
-            explicit_vulnerabilities += find_vuln(callee['sinks'], arg['sources'])
-            #explicit_vulnerabilities += (set(callee['sinks']).intersection(arg['sources'])) # Detects explicit vulnerabilities if there are sinks in the callee and sources in the arguments that match
-        node['vulns'] += explicit_vulnerabilities
+            node['LabelList'].mergeWith(arg['LabelList'])
+            explicit_vulnerabilities += LabelList.findExplicitVulns(node['LabelList'].sinks, arg['LabelList'].sources, node['loc']['start']['line'])
+
+        node['LabelList'].vulns += explicit_vulnerabilities
 
 
-def find_vuln(sinks, sources):
-    ret = []
-    for si in sinks:
-        for so in sources:
-            if si == [] or so == [] or si[0] != so[0]:
-                return ()
-            # [vulnerability, source_id, source_line, sink_id, sink_line]
-            ret += [(si[0], so[1], so[2], si[1], si[2])]
-    return ret
+def main(vulnDict, root):
+    global vuln_dict
+    vuln_dict = vulnDict
+    #parseVulnerabilityDict(vuln_dict)
+    traverse(root)
+    with open(f"test_tree.json", "w") as outfile: 
+        json.dump(root['LabelList'].to_dict(), outfile, indent=2)
