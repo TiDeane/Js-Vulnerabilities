@@ -14,10 +14,19 @@ def getSequentialId(vuln):
     return vuln + "_" + str(sequentialIds[vuln])
 
 def mergeListsOrdered(list1, list2):
-    result = list1.copy()
-    result.extend(
-        [x for x in list2 if x not in list1]
-    )
+    seen = set()
+    result = []
+    
+    for item in list1:
+        if item not in seen:
+            result.append(item)
+            seen.add(item)
+    
+    for item in list2:
+        if item not in seen:
+            result.append(item)
+            seen.add(item)
+    
     return result
 
 class Label:
