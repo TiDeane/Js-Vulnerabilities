@@ -136,6 +136,24 @@ def searchVulnerabilityDict(identifier):   # Returns the vulnerability patterns 
                 
     return source_patterns, sink_patterns
 
+def searchVulnerabilityDictSources(identifier):   # Returns the vulnerability patterns associated to the identifier
+    source_patterns = []
+    for pattern in vuln_dict:
+        for source_id in pattern['sources']:
+            if source_id == identifier:
+                source_patterns.append(pattern)
+                
+    return source_patterns
+
+def searchVulnerabilityDictSinks(identifier):   # Returns the vulnerability patterns associated to the identifier
+    sink_patterns = []
+    for pattern in vuln_dict:
+        for sink_id in pattern['sinks']:
+            if sink_id == identifier:
+                sink_patterns.append(pattern)
+                
+    return sink_patterns
+
 def getVulnerabilityPattern(vuln):  # Gets the vulnerability pattern corresponding to that vulnerability
     for pattern in vuln_dict:
         if pattern['vulnerability'] == vuln:
@@ -203,14 +221,10 @@ def label_identifier_left(node):
         node['LabelList'] = LabelList()
         identifier = node['name']
         print("Labeling identifier (left) " + identifier)
-        if identifier in new_identifiers:
-            node['LabelList'].mergeWith(new_identifiers['LabelList'])
-        else:
-            source_patterns, sink_patterns = searchVulnerabilityDict(identifier)
-            for pattern in source_patterns:
-                node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
-            for pattern in sink_patterns:
-                node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, node['loc']['start']['line']))
+        
+        sink_patterns = searchVulnerabilityDictSinks(identifier)
+        for pattern in sink_patterns:
+            node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, node['loc']['start']['line']))
                 
         print(f"node {node['name']}'s sources: {node['LabelList'].sources}")
 
@@ -221,6 +235,9 @@ def label_identifier_right(node):
         identifier = node['name']
         if identifier in new_identifiers:
             node['LabelList'].mergeWith(new_identifiers[identifier])
+            source_patterns = searchVulnerabilityDictSources(identifier)
+            for pattern in source_patterns:
+                node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
         else:
             source_patterns, sink_patterns = searchVulnerabilityDict(identifier)
             for pattern in source_patterns:
