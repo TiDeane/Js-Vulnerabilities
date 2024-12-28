@@ -103,9 +103,9 @@ class LabelList:
         self.vulns = []
         
     def mergeWith(self, other: LabelList):
-        self.sources += copy.deepcopy(other.sources)
-        self.sinks += copy.deepcopy(other.sinks)
-        self.vulns += copy.deepcopy(other.vulns)
+        self.sources = mergeListsOrdered(self.sources, other.sources)
+        self.sinks = mergeListsOrdered(self.sinks, other.sinks)
+        self.vulns = mergeListsOrdered(self.vulns, other.vulns)
         
     @staticmethod
     def findExplicitVulns(sinks, sources, line):
