@@ -115,8 +115,8 @@ class LabelList:
         """Convert the LabelList to a dictionary."""
         return {
             "vulns": [vuln.to_dict() for vuln in self.vulns],
-            "sources": [source.to_dict() for source in self.sources],
-            "sinks": [sink.to_dict() for sink in self.sinks],
+            #"sources": [source.to_dict() for source in self.sources],
+            #"sinks": [sink.to_dict() for sink in self.sinks],
         }
 
     def __str__(self):
@@ -191,6 +191,7 @@ def label_program(node):
         for stmt in node['body']:
             traverse(stmt)
             node['LabelList'].mergeWith(stmt['LabelList'])   # Accumulates all found vulnerabilities
+        print("Program node vulns: " + str(node['LabelList']))
 
 def label_expressionstmt(node):
     print("Labeling expressionstmt")
@@ -199,6 +200,7 @@ def label_expressionstmt(node):
         expression = node['expression']
         traverse(expression)
         node['LabelList'].mergeWith(expression['LabelList'])  # Accumulates the vulnerabilites of the expression it states
+        print("Expression node vulns: " + str(node['LabelList']))
 
 def label_assignment(node):
     print("Labeling assignment")
@@ -214,6 +216,7 @@ def label_assignment(node):
         node['LabelList'].vulns += explicit_vulnerabilities
         
         new_identifiers[left['name']] = node['LabelList']  # Add left identifier and LabelList for future use
+        print("Assignment node vulns: " + str(node['LabelList']))
              
         
 def label_identifier_left(node):
@@ -227,6 +230,7 @@ def label_identifier_left(node):
             node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, node['loc']['start']['line']))
                 
         print(f"node {node['name']}'s sources: {node['LabelList'].sources}")
+        print("Identifier Left node vulns: " + str(node['LabelList']))
 
 def label_identifier_right(node):
     if isinstance(node, dict):
@@ -244,6 +248,7 @@ def label_identifier_right(node):
                 node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
             for pattern in sink_patterns:
                 node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, node['loc']['start']['line']))
+        print("Identifier Right node vulns: " + str(node['LabelList']))
 
 def label_literal(node):
     print("Labeling literal")
@@ -267,9 +272,10 @@ def label_call(node):
         for arg in arguments:
             traverse(arg, False)
             node['LabelList'].mergeWith(arg['LabelList'])
-            explicit_vulnerabilities += LabelList.findExplicitVulns(node['LabelList'].sinks, arg['LabelList'].sources, node['loc']['start']['line'])
+            explicit_vulnerabilities += LabelList.findExplicitVulns(callee['LabelList'].sinks, arg['LabelList'].sources, node['loc']['start']['line'])
 
         node['LabelList'].vulns += explicit_vulnerabilities
+        print("Call node vulns: " + str(node['LabelList']))
 
 
 def main(vulnDict, root):
