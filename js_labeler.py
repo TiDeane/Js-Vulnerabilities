@@ -13,6 +13,13 @@ def getSequentialId(vuln):
     
     return vuln + "_" + str(sequentialIds[vuln])
 
+def mergeListsOrdered(list1, list2):
+    result = list1.copy()
+    result.extend(
+        [x for x in list2 if x not in list1]
+    )
+    return result
+
 class Label:
     def __init__(self, line):
         self.line = line
@@ -47,8 +54,7 @@ class Vuln(Label):
             "sink": [self.sink, self.sinkline],
             "unsanitized_flows": self.unsanitized_flows,
             "sanitized_flows": self.sanitized_flows,
-            "implicit": self.implicit,
-            "line": self.line
+            "implicit": self.implicit
         }
 
     def __str__(self):
@@ -110,6 +116,11 @@ class LabelList:
                     vulns.append(Vuln(getSequentialId(sink.vuln), source.source, source.line, sink.sink, sink.line, source.unsanitized, source.sanitized, "no", line))
         
         return vulns
+    
+    def to_list(self):
+        return [
+            vuln.to_dict() for vuln in self.vulns
+        ]
 
     def to_dict(self):
         """Convert the LabelList to a dictionary."""
@@ -164,24 +175,26 @@ new_identifiers = {}  # Dict of identifier to their LabelList to keep track of n
 
           
 # Traverses every node in the AST
-def traverse(node, left = True):
+def traverse(node, left=True):
     if isinstance(node, dict):
-        if node.get('type') == 'Program':
-            label_program(node)
-        elif node.get('type') == 'ExpressionStatement':
-            label_expressionstmt(node)
-        elif node.get('type') == 'AssignmentExpression':
-            label_assignment(node)
-        elif node.get('type') == 'Identifier' and left:
-            label_identifier_left(node)
-        elif node.get('type') == 'Identifier' and not left:
-            label_identifier_right(node)
-        elif node.get('type') == "CallExpression":
-            label_call(node)
-        elif node.get('type') == 'Literal':
-            label_literal(node)
-        else:
-            print("Error: Unknown node type")
+        match node.get('type'):
+            case 'Program':
+                label_program(node)
+            case 'ExpressionStatement':
+                label_expressionstmt(node)
+            case 'AssignmentExpression':
+                label_assignment(node)
+            case 'Identifier' if left:
+                label_identifier_left(node)
+            case 'Identifier' if not left:
+                label_identifier_right(node)
+            case 'CallExpression':
+                label_call(node)
+            case 'Literal':
+                label_literal(node)
+            case _:
+                print("Error: Unknown node type")
+
 
 # Root node
 def label_program(node):
@@ -191,6 +204,7 @@ def label_program(node):
         for stmt in node['body']:
             traverse(stmt)
             node['LabelList'].mergeWith(stmt['LabelList'])   # Accumulates all found vulnerabilities
+            print("added " + str(stmt['LabelList']) + " to Program node")
         print("Program node vulns: " + str(node['LabelList']))
 
 def label_expressionstmt(node):
@@ -284,4 +298,4 @@ def main(vulnDict, root):
     #parseVulnerabilityDict(vuln_dict)
     traverse(root)
     with open(f"test_tree.json", "w") as outfile: 
-        json.dump(root['LabelList'].to_dict(), outfile, indent=2)
+        json.dump(root['LabelList'].to_list(), outfile, indent=4)
