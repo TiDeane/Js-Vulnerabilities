@@ -201,32 +201,34 @@ def traverse(node, left=True):
                 label_call(node)
             case 'Literal':
                 label_literal(node)
+            case 'BinaryExpression':
+                label_binaryexpr(node)
             case _:
                 print("Error: Unknown node type")
 
 
 # Root node
 def label_program(node):
-    print("Labeling program")
+    #print("Labeling program")
     if isinstance(node, dict):
         node['LabelList'] = LabelList()         
         for stmt in node['body']:
             traverse(stmt)
             node['LabelList'].mergeWith(stmt['LabelList'])   # Accumulates all found vulnerabilities
-            print("added " + str(stmt['LabelList']) + " to Program node")
-        print("Program node vulns: " + str(node['LabelList']))
+            #print("added " + str(stmt['LabelList']) + " to Program node")
+        #print("Program node vulns: " + str(node['LabelList']))
 
 def label_expressionstmt(node):
-    print("Labeling expressionstmt")
+    #print("Labeling expressionstmt")
     if isinstance(node, dict):
         node['LabelList'] = LabelList()
         expression = node['expression']
         traverse(expression)
         node['LabelList'].mergeWith(expression['LabelList'])  # Accumulates the vulnerabilites of the expression it states
-        print("Expression node vulns: " + str(node['LabelList']))
+        #print("Expression node vulns: " + str(node['LabelList']))
 
 def label_assignment(node):
-    print("Labeling assignment")
+    #print("Labeling assignment")
     if isinstance(node, dict):
         node['LabelList'] = LabelList()
         left = node['left']
@@ -239,25 +241,25 @@ def label_assignment(node):
         node['LabelList'].vulns += explicit_vulnerabilities
         
         new_identifiers[left['name']] = node['LabelList']  # Add left identifier and LabelList for future use
-        print("Assignment node vulns: " + str(node['LabelList']))
+        #print("Assignment node vulns: " + str(node['LabelList']))
              
         
 def label_identifier_left(node):
     if isinstance(node, dict):
         node['LabelList'] = LabelList()
         identifier = node['name']
-        print("Labeling identifier (left) " + identifier)
+        #print("Labeling identifier (left) " + identifier)
         
         sink_patterns = searchVulnerabilityDictSinks(identifier)
         for pattern in sink_patterns:
             node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, node['loc']['start']['line']))
                 
-        print(f"node {node['name']}'s sources: {node['LabelList'].sources}")
-        print("Identifier Left node vulns: " + str(node['LabelList']))
+        #print(f"node {node['name']}'s sources: {node['LabelList'].sources}")
+        #print("Identifier Left node vulns: " + str(node['LabelList']))
 
 def label_identifier_right(node):
     if isinstance(node, dict):
-        print(f"{node['name']} in new_identfiers? - {node['name'] in new_identifiers}")
+        #print(f"{node['name']} in new_identfiers? - {node['name'] in new_identifiers}")
         node['LabelList'] = LabelList()
         identifier = node['name']
         if identifier in new_identifiers:
@@ -271,10 +273,10 @@ def label_identifier_right(node):
                 node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
             for pattern in sink_patterns:
                 node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, node['loc']['start']['line']))
-        print("Identifier Right node vulns: " + str(node['LabelList']))
+        #print("Identifier Right node vulns: " + str(node['LabelList']))
 
 def label_literal(node):
-    print("Labeling literal")
+    #print("Labeling literal")
     if isinstance(node, dict):
         node['LabelList'] = LabelList()
 
@@ -294,12 +296,26 @@ def label_call(node):
 
         for arg in arguments:
             traverse(arg, False)
+            #print("arg labelist sources")
+            #print(arg['LabelList'].sources)
             node['LabelList'].mergeWith(arg['LabelList'])
             explicit_vulnerabilities += LabelList.findExplicitVulns(callee['LabelList'].sinks, arg['LabelList'].sources, node['loc']['start']['line'])
 
         node['LabelList'].vulns += explicit_vulnerabilities
         print("Call node vulns: " + str(node['LabelList']))
-
+        
+def label_binaryexpr(node):
+    print("Labelling binary expression")
+    if isinstance(node, dict):
+        node['LabelList'] = LabelList()
+        left = node['left']
+        right = node['right']
+        traverse(left, False)
+        traverse(right, False)
+        print(left['LabelList'].sources)
+        print(right['LabelList'].sources)
+        node['LabelList'].mergeWith(left['LabelList'])
+        node['LabelList'].mergeWith(right['LabelList'])
 
 def main(vulnDict, root):
     global vuln_dict
