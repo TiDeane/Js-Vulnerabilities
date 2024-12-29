@@ -24,4 +24,4 @@ print(vuln_dict)
 with open(f"{sys.argv[1]}_tree.json", "w") as outfile: 
     json.dump(ast_dict, outfile, indent=2)
 
-main(vuln_dict, ast_dict)
+#main(vuln_dict, ast_dict)
