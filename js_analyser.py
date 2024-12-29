@@ -45,4 +45,4 @@ with open(f"{sys.argv[1]}_tree.json", "w") as outfile:
 
 main(vuln_dict, ast_dict)
 
-diff_files(f"./output{sys.argv[1][8:-3]}.output.json", "test_tree.json")
+#diff_files(f"./output{sys.argv[1][8:-3]}.output.json", "test_tree.json")

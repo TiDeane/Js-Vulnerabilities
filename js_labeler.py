@@ -3,7 +3,9 @@ from typing import List, Dict
 import json
 import copy
 
-sequentialIds = {}
+sequentialIds = {} # Dict of vulnerabilities to their number of occurences
+sanitizers = {} # Dict of sanitizer identifiers to their sources
+found_vulns = [] # List of (vuln, source, source_line, sink, sink_line) tuples
 
 def getSequentialId(vuln):
     if vuln in sequentialIds:
@@ -12,6 +14,13 @@ def getSequentialId(vuln):
         sequentialIds[vuln] = 1
     
     return vuln + "_" + str(sequentialIds[vuln])
+
+def matchSanitizers():
+    for pattern in vuln_dict:
+        for sanitizer in pattern['sanitizers']:
+            sanitizers[sanitizer] = []
+            for source in pattern['sources']:
+                sanitizers[sanitizer] = source
 
 def mergeListsOrdered(list1, list2):
     seen = set()
@@ -121,9 +130,10 @@ class LabelList:
         vulns = []
         for sink in sinks:
             for source in sources:
-                if sink.vuln == source.vuln:
+                if sink.vuln == source.vuln and (source.vuln, source.source, source.line, sink.sink, sink.line) not in found_vulns:
                     vulns.append(Vuln(getSequentialId(sink.vuln), source.source, source.line, sink.sink, sink.line, source.unsanitized, source.sanitized, "no", line))
-        
+                    found_vulns.append((source.vuln, source.source, source.line, sink.sink, sink.line))
+
         return vulns
     
     def to_list(self):
@@ -268,9 +278,19 @@ def label_identifier_right(node):
             for pattern in source_patterns:
                 node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
         else:
-            source_patterns, sink_patterns = searchVulnerabilityDict(identifier)
-            for pattern in source_patterns:
+            if identifier in sanitizers:
+                return
+            is_source = False
+            for pattern in vuln_dict:
+                if identifier in pattern['sources']:
+                    is_source = True
+                    break
+            if is_source:
                 node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
+            else:
+                for pattern in vuln_dict:
+                    node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
+            sink_patterns = searchVulnerabilityDictSinks(identifier)
             for pattern in sink_patterns:
                 node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, node['loc']['start']['line']))
         #print("Identifier Right node vulns: " + str(node['LabelList']))
@@ -312,8 +332,8 @@ def label_binaryexpr(node):
         right = node['right']
         traverse(left, False)
         traverse(right, False)
-        print(left['LabelList'].sources)
-        print(right['LabelList'].sources)
+        #print(left['LabelList'].sources)
+        #print(right['LabelList'].sources)
         node['LabelList'].mergeWith(left['LabelList'])
         node['LabelList'].mergeWith(right['LabelList'])
 
@@ -321,6 +341,7 @@ def main(vulnDict, root):
     global vuln_dict
     vuln_dict = vulnDict
     #parseVulnerabilityDict(vuln_dict)
+    matchSanitizers()
     traverse(root)
     with open(f"test_tree.json", "w") as outfile: 
         json.dump(root['LabelList'].to_list(), outfile, indent=4)

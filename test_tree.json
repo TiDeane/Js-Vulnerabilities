@@ -28,6 +28,20 @@
         "implicit": "no"
     },
     {
+        "vulnerability": "A_2",
+        "source": [
+            "d",
+            3
+        ],
+        "sink": [
+            "e",
+            3
+        ],
+        "unsanitized_flows": "yes",
+        "sanitized_flows": [],
+        "implicit": "no"
+    },
+    {
         "vulnerability": "B_2",
         "source": [
             "b",
@@ -42,9 +56,9 @@
         "implicit": "no"
     },
     {
-        "vulnerability": "A_2",
+        "vulnerability": "B_3",
         "source": [
-            "a",
+            "d",
             3
         ],
         "sink": [
@@ -56,10 +70,10 @@
         "implicit": "no"
     },
     {
-        "vulnerability": "B_3",
+        "vulnerability": "A_3",
         "source": [
-            "b",
-            1
+            "a",
+            3
         ],
         "sink": [
             "e",
