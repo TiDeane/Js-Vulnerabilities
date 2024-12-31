@@ -52,7 +52,12 @@
             3
         ],
         "unsanitized_flows": "yes",
-        "sanitized_flows": [],
+        "sanitized_flows": [
+            [
+                "s",
+                2
+            ]
+        ],
         "implicit": "no"
     },
     {
