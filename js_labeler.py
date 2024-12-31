@@ -234,6 +234,12 @@ def check_sanitized(identifier, node):
     if sanitized_identifiers[identifier]['loc']['end']['line'] != 0: # 0 means that the identifier is sanitized the rest of the program
         if node['loc']['start']['column'] > sanitized_identifiers[identifier]['loc']['start']['column']:
             return
+    else:
+        if node['loc']['start']['line'] == sanitized_identifiers[identifier]['loc']['end']['line']:
+            if node['loc']['start']['column'] < sanitized_identifiers[identifier]['loc']['end']['column']:
+                return
+        elif node['loc']['start']['line'] > sanitized_identifiers[identifier]['loc']['end']['line']:
+            return
     vuln = sanitized_identifiers[identifier]['vulnerability']
     sanitizer = sanitized_identifiers[identifier]['sanitizer']
     source = sanitized_identifiers[identifier]['source']
