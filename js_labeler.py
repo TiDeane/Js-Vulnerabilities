@@ -359,8 +359,9 @@ def label_identifier_right(node):
             for pattern in vuln_dict:
                 if identifier in pattern['sources']:
                     source_to.append(pattern)
-            if source_to == []:
-                node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
+            if source_to != []:
+                for pattern in source_to:
+                    node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
             else:
                 for pattern in vuln_dict:
                     node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
