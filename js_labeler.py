@@ -154,7 +154,7 @@ class LabelList:
                 sanitized_flow = []
                 if sink.vuln == source.vuln and (source.vuln, source.source, source.line, sink.sink, sink.line) not in found_vulns:
                     for sanitizer in node['LabelList'].sanitizers:
-                        if source.source == sanitizer.source:
+                        if source.vuln == sanitizer.vuln and source.source == sanitizer.source:
                             sanitized_flow.append([sanitizer.sanitizer, sanitizer.line])
                     vulns.append(Vuln(getSequentialId(sink.vuln), source.source, source.line, sink.sink, sink.line, source.unsanitized, sanitized_flow, "no", node['loc']['start']['line']))
                     found_vulns.append((source.vuln, source.source, source.line, sink.sink, sink.line))
