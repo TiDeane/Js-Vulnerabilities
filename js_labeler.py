@@ -354,12 +354,12 @@ def label_identifier_right(node):
             for sanitizer in sanitizers:
                 if identifier in sanitizer[0]:
                     return
-            is_source = False
+            
+            source_to = []
             for pattern in vuln_dict:
                 if identifier in pattern['sources']:
-                    is_source = True
-                    break
-            if is_source:
+                    source_to.append(pattern)
+            if source_to == []:
                 node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
             else:
                 for pattern in vuln_dict:
