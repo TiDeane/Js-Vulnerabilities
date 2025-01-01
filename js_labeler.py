@@ -170,8 +170,8 @@ class LabelList:
         """Convert the LabelList to a dictionary."""
         return {
             "vulns": [vuln.to_dict() for vuln in self.vulns],
-            #"sources": [source.to_dict() for source in self.sources],
-            #"sinks": [sink.to_dict() for sink in self.sinks],
+            "sources": [source.to_dict() for source in self.sources],
+            "sinks": [sink.to_dict() for sink in self.sinks],
             "sanitizers": [sanitizer.to_dict() for sanitizer in self.sanitizers],
         }
 
@@ -234,11 +234,8 @@ def check_sanitized(identifier, node):
     if sanitized_identifiers[identifier]['loc']['end']['line'] != 0: # 0 means that the identifier is sanitized the rest of the program
         if node['loc']['start']['column'] > sanitized_identifiers[identifier]['loc']['start']['column']:
             return
-    else:
-        if node['loc']['start']['line'] == sanitized_identifiers[identifier]['loc']['end']['line']:
-            if node['loc']['start']['column'] < sanitized_identifiers[identifier]['loc']['end']['column']:
-                return
-        elif node['loc']['start']['line'] > sanitized_identifiers[identifier]['loc']['end']['line']:
+    if node['loc']['start']['line'] == sanitized_identifiers[identifier]['loc']['end']['line']:
+        if node['loc']['start']['column'] < sanitized_identifiers[identifier]['loc']['end']['column']:
             return
     vuln = sanitized_identifiers[identifier]['vulnerability']
     sanitizer = sanitized_identifiers[identifier]['sanitizer']
@@ -341,7 +338,7 @@ def label_identifier_left(node):
 
 def label_identifier_right(node):
     if isinstance(node, dict):
-        #print(f"{node['name']} in new_identfiers? - {node['name'] in new_identifiers}")
+        print(f"{node['name']} in new_identfiers? - {node['name'] in new_identifiers}")
         node['LabelList'] = LabelList()
         identifier = node['name']
         if identifier in new_identifiers:
@@ -351,6 +348,9 @@ def label_identifier_right(node):
             for pattern in source_patterns:
                 node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
         else:
+            sink_patterns = searchVulnerabilityDictSinks(identifier)
+            for pattern in sink_patterns:
+                node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, node['loc']['start']['line']))
             for sanitizer in sanitizers:
                 if identifier in sanitizer[0]:
                     return
@@ -364,9 +364,6 @@ def label_identifier_right(node):
             else:
                 for pattern in vuln_dict:
                     node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
-            sink_patterns = searchVulnerabilityDictSinks(identifier)
-            for pattern in sink_patterns:
-                node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, node['loc']['start']['line']))
         #print("Identifier Right node vulns: " + str(node['LabelList']))
 
 def label_literal(node):
@@ -389,8 +386,12 @@ def label_call(node):
         arguments = node["arguments"]
     
         for arg in arguments:
+            print("traversing argument")
             traverse(arg, False)
             node['LabelList'].mergeWith(arg['LabelList'])
+            print(f"node {get_node_name(node)} merging with arg {get_node_name(arg)}")
+            print(node['LabelList'].to_dict())
+            print(arg['LabelList'].to_dict())
             explicit_vulnerabilities += LabelList.findExplicitVulns(callee['LabelList'].sinks, arg['LabelList'].sources, node)
 
         node['LabelList'].vulns += explicit_vulnerabilities
