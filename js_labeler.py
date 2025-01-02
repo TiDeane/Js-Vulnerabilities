@@ -240,7 +240,7 @@ def get_node_name(node):
 sanitized_identifiers = {} # Dict of identifiers that are sanitized and their location
 sanitized_args = {} # Dict of arguments that are sanitized and their location
         
-# NOTE: CURRENTLY UNUSED!
+
 def check_sanitized(identifier, node):
     if identifier not in sanitized_identifiers:
         return
@@ -316,7 +316,8 @@ def label_assignment(node):
         right = node['right']
         traverse(left)
         traverse(right, False)
-        node['LabelList'].mergeWith(left['LabelList'])      # Accumulate vulnerabilities of both sides of the assignment
+        print(f"merging assignment with {get_node_name(left)} and {get_node_name(right)}")
+        node['LabelList'].mergeWith(left['LabelList'])  # Accumulate vulnerabilities of both sides of the assignment
         node['LabelList'].mergeWith(right['LabelList'])
         explicit_vulnerabilities = LabelList.findExplicitVulns(left['LabelList'].sinks, right['LabelList'].sources, node)  # Add new explicit vulnerabilities found
         node['LabelList'].vulns += explicit_vulnerabilities
@@ -362,6 +363,7 @@ def label_identifier_right(node):
         node['LabelList'] = LabelList()
         identifier = node['name']
         if identifier in new_identifiers:
+            check_sanitized(identifier, node)
             node['LabelList'].mergeWith(new_identifiers[identifier])
             source_patterns = searchVulnerabilityDictSources(identifier)
             for pattern in source_patterns:
@@ -430,14 +432,12 @@ def label_call(node):
         node['LabelList'].mergeWith(callee['LabelList'])   # Accumulates the vulnerabilites of the expression it states
 
         explicit_vulnerabilities = []
-            
         for arg in arguments:
-            node['LabelList'].mergeWith(arg['LabelList'])
             print(f"node {get_node_name(node)} merging with arg {get_node_name(arg)}")
+            node['LabelList'].mergeWith(arg['LabelList'])
 
             explicit_vulnerabilities += LabelList.findExplicitVulns(callee['LabelList'].sinks, arg['LabelList'].sources, node)
 
-        sanitized_args = {}
         node['LabelList'].vulns += explicit_vulnerabilities
         print("Call node vulns: " + str(node['LabelList']))
         
