@@ -40,13 +40,14 @@ def mergeListsOrdered(list1, list2):
 def getIdentifierArgs(node):
     if isinstance(node, dict):
         identifiers = []
-        if node['type'] == "CallExpression":
+        if node['type'] == "Identifier":
+            identifiers.append(node['name'])
+        elif node['type'] == "CallExpression":
             for arg in node['arguments']:
-                if arg['type'] == "Identifier":
-                    identifiers.append(get_node_name(arg))
-                elif arg['type'] == "CallExpression":
-                    identifiers += getIdentifierArgs(arg)
-        
+                identifiers += getIdentifierArgs(arg)
+        elif node['type'] == "BinaryExpression":
+            identifiers += getIdentifierArgs(node['left']) + getIdentifierArgs(node['right'])
+
         return identifiers
 
 class Label:
@@ -237,7 +238,9 @@ def get_node_name(node):
             return None
         
 sanitized_identifiers = {} # Dict of identifiers that are sanitized and their location
+sanitized_args = {} # Dict of arguments that are sanitized and their location
         
+# NOTE: CURRENTLY UNUSED!
 def check_sanitized(identifier, node):
     if identifier not in sanitized_identifiers:
         return
@@ -255,6 +258,7 @@ def check_sanitized(identifier, node):
         sanitizer = aux['sanitizer']
         source = aux['source']
         line = aux['loc']['start']['line']
+        print(f"ADDED SANITIZER {sanitizer} for {identifier}")
         node['LabelList'].sanitizers.append(Sanitizer(vuln, sanitizer, identifier, source, line))
 
 
@@ -318,7 +322,6 @@ def label_assignment(node):
         node['LabelList'].vulns += explicit_vulnerabilities
         
         new_identifiers[left['name']] = node['LabelList']  # Add left identifier and LabelList for future use
-        #print("Assignment node vulns: " + str(node['LabelList']))
 
         leftName = get_node_name(left)
         rightName = get_node_name(right)
@@ -361,7 +364,6 @@ def label_identifier_right(node):
         if identifier in new_identifiers:
             node['LabelList'].mergeWith(new_identifiers[identifier])
             source_patterns = searchVulnerabilityDictSources(identifier)
-            check_sanitized(identifier, node)
             for pattern in source_patterns:
                 node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
         else:
@@ -369,7 +371,9 @@ def label_identifier_right(node):
             for pattern in sink_patterns:
                 node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, node['loc']['start']['line']))
             for sanitizer in sanitizers:
-                if identifier in sanitizer[0]:
+                if identifier == sanitizer[0]: # Identifier is a Sanitizer
+                    for arg in sanitized_args: # Identifier sanitizes its arguments
+                        node['LabelList'].sanitizers.append(Sanitizer(sanitizer[1], identifier, arg, sanitizer[2], node['loc']['start']['line']))
                     return
             
             source_to = []
@@ -393,42 +397,47 @@ def label_call(node):
     print("Labeling call")
     if isinstance(node, dict):
         callee = node["callee"]
+        arguments = node["arguments"]
         node['LabelList'] = LabelList()
+
+        sanitized_args = {}
+        for arg in arguments:
+            print("traversing argument")
+            traverse(arg, False)
+        for sanitizer in sanitizers:
+            if callee['name'] == sanitizer[0]:
+                for arg in arguments:
+                    leftName = get_node_name(arg)
+                    rightName = callee['name']
+                    if leftName != None:
+                        arg['LabelList'].sanitizers.append(Sanitizer(sanitizer[1], sanitizer[0], get_node_name(arg), sanitizer[2], node['loc']['start']['line']))
+                        if sanitized_args.get(leftName) == None:
+                            sanitized_args[leftName] = []
+                        print("SANITIZED ARGUMENT: " + rightName + " sanitized " + leftName + " in line " + str(arg['loc']['start']))
+                        print(sanitizer[0])
+                        aux_dict = {}
+                        aux_dict['sanitizer'] = rightName
+                        aux_dict['vulnerability'] = sanitizer[1]
+                        aux_dict['source'] = sanitizer[2]
+                        aux_dict['loc'] = {}
+                        aux_dict['loc']['start'] = arg['loc']['start']
+                        aux_dict['loc']['end'] = {'line': 0, 'column': 0}
+                        sanitized_args[leftName].append(aux_dict)
+                        print("Sanitized args: " + str(sanitized_args))
+
         print("callee = " + str(callee))
         traverse(callee, False)
         node['LabelList'].mergeWith(callee['LabelList'])   # Accumulates the vulnerabilites of the expression it states
 
         explicit_vulnerabilities = []
-        arguments = node["arguments"]
-        rightName = get_node_name(callee)
-        arg_identifiers = getIdentifierArgs(node)
             
         for arg in arguments:
-            print("traversing argument")
-            traverse(arg, False)
             node['LabelList'].mergeWith(arg['LabelList'])
             print(f"node {get_node_name(node)} merging with arg {get_node_name(arg)}")
-            leftName = get_node_name(arg)
-            if leftName != None: # argument is a Literal
-                print(arg_identifiers)
-                for sanitizer in sanitizers:
-                    if rightName == sanitizer[0]:
-                        for leftName in arg_identifiers:
-                            if sanitized_identifiers.get(leftName) == None:
-                                sanitized_identifiers[leftName] = []
-                            print("SANITIZED: " + rightName + " sanitized " + leftName + " in line " + str(arg['loc']['start']))
-                            aux_dict = {}
-                            aux_dict['sanitizer'] = rightName
-                            aux_dict['vulnerability'] = sanitizer[1]
-                            aux_dict['source'] = sanitizer[2]
-                            aux_dict['loc'] = {}
-                            aux_dict['loc']['start'] = arg['loc']['start']
-                            aux_dict['loc']['end'] = {'line': 0, 'column': 0}
-                            sanitized_identifiers[leftName].append(aux_dict)
-                            print("Sanitized identifiers: " + str(sanitized_identifiers))
 
             explicit_vulnerabilities += LabelList.findExplicitVulns(callee['LabelList'].sinks, arg['LabelList'].sources, node)
 
+        sanitized_args = {}
         node['LabelList'].vulns += explicit_vulnerabilities
         print("Call node vulns: " + str(node['LabelList']))
         
