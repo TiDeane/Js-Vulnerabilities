@@ -172,6 +172,8 @@ class LabelList:
                         for sanitizer in node['LabelList'].sanitizers[flow_id]:
                             if source.vuln == sanitizer.vuln and source.source == sanitizer.source:
                                 sanitized_flow_aux.append([sanitizer.sanitizer, sanitizer.line])
+                                print("\nHERRRRRREEEEEE\n")
+                                print(get_node_name(node))
                         sanitized_flows.append(sanitized_flow_aux) if sanitized_flow_aux else None
                     vulns.append(Vuln(getSequentialId(sink.vuln), source.source, source.line, sink.sink, sink.line, source.unsanitized, sanitized_flows, "no", node['loc']['start']['line']))
                     found_vulns.append((source.vuln, source.source, source.line, sink.sink, sink.line))
@@ -259,6 +261,13 @@ def check_sanitized(identifier, node):
             res.append(json.loads(f))
         sanitized_identifiers[id] = res
     
+    print("\nS)ADUOSADI")
+    print(sanitized_identifiers)
+    print(node['LabelList'])
+    for s in node['LabelList'].sanitizers:
+        for s1 in node['LabelList'].sanitizers[s]:
+            print(s1)
+            print(f"LINE: {node['loc']['start']['line']}")
     for aux in sanitized_identifiers[identifier]:
         if node['loc']['start']['line'] < aux['loc']['start']['line']:
             continue
@@ -381,7 +390,7 @@ def label_identifier_right(node):
         if identifier in new_identifiers:
             node['LabelList'].mergeWith(new_identifiers[identifier])
             source_patterns = searchVulnerabilityDictSources(identifier)
-            check_sanitized(identifier, node)
+            #check_sanitized(identifier, node)
             for pattern in source_patterns:
                 node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
         else:
@@ -436,6 +445,8 @@ def label_call(node):
             for sanitizer in sanitizers:
                 if rightName == sanitizer[0]:
                     if leftName != None:
+                        print("\nAISDJAIOSD\n")
+                        print(sanitized_identifiers)
                         print(f"node {get_node_name(node)} merging with arg {get_node_name(arg)}")
                         arg['LabelList'].sanitizers[flow_id] = [] if flow_id not in arg['LabelList'].sanitizers else arg['LabelList'].sanitizers[flow_id]
                         arg['LabelList'].sanitizers[flow_id].append(Sanitizer(sanitizer[1], sanitizer[0], get_node_name(arg), sanitizer[2], node['loc']['start']['line'], flow_id))
