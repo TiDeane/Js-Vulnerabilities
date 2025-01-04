@@ -126,12 +126,13 @@ class Sink(Label):
         return json.dumps(self.to_dict(), indent=4)
     
 class Sanitizer(Label):
-    def __init__(self, vuln, sanitizer, identifier, source, line):
+    def __init__(self, vuln, sanitizer, identifier, source, line, flow_id):
         super().__init__(line)
         self.vuln = vuln
         self.sanitizer = sanitizer
         self.identifier = identifier
         self.source = source
+        self.flow_id = flow_id
 
     def to_dict(self):
         """Convert Sanitizer object to a dictionary."""
@@ -139,7 +140,8 @@ class Sanitizer(Label):
             "vulnerability": ["SANITIZER_FOR_" + self.vuln, self.line],
             "identifier": self.identifier,
             "sanitizer": self.sanitizer,
-            "source": self.source
+            "source": self.source,
+            "flow_id": self.flow_id
         }
 
     def __str__(self):
@@ -187,7 +189,7 @@ class LabelList:
             "vulns": [vuln.to_dict() for vuln in self.vulns],
             "sources": [source.to_dict() for source in self.sources],
             "sinks": [sink.to_dict() for sink in self.sinks],
-            #"sanitizers": self.sanitizers
+            "sanitizers": [[sanitizer.to_dict() for sanitizer in sanitizer_list] for sanitizer_list in self.sanitizers.values()]
         }
 
     def __str__(self):
@@ -257,7 +259,6 @@ def check_sanitized(identifier, node):
             res.append(json.loads(f))
         sanitized_identifiers[id] = res
     
-    sanitizers_aux = []
     for aux in sanitized_identifiers[identifier]:
         if node['loc']['start']['line'] < aux['loc']['start']['line']:
             continue
@@ -271,12 +272,11 @@ def check_sanitized(identifier, node):
         sanitizer = aux['sanitizer']
         source = aux['source']
         line = aux['loc']['start']['line']
-        sanitizers_aux.append(Sanitizer(vuln, sanitizer, identifier, source, line))
         global flow
         flow += 1
         flow_id = flow
         node['LabelList'].sanitizers[flow_id] = [] if flow_id not in node['LabelList'].sanitizers else node['LabelList'].sanitizers[flow_id]
-        node['LabelList'].sanitizers[flow_id].append(Sanitizer(vuln, sanitizer, identifier, source, line))
+        node['LabelList'].sanitizers[flow_id].append(Sanitizer(vuln, sanitizer, identifier, source, line, flow_id))
 
 new_identifiers = {}  # Dict of identifier to their LabelList to keep track of new declared identifiers and the vulnerabilities
           
@@ -438,7 +438,7 @@ def label_call(node):
                     if leftName != None:
                         print(f"node {get_node_name(node)} merging with arg {get_node_name(arg)}")
                         arg['LabelList'].sanitizers[flow_id] = [] if flow_id not in arg['LabelList'].sanitizers else arg['LabelList'].sanitizers[flow_id]
-                        arg['LabelList'].sanitizers[flow_id].append(Sanitizer(sanitizer[1], sanitizer[0], get_node_name(arg), sanitizer[2], node['loc']['start']['line']))
+                        arg['LabelList'].sanitizers[flow_id].append(Sanitizer(sanitizer[1], sanitizer[0], get_node_name(arg), sanitizer[2], node['loc']['start']['line'], flow_id))
                         print("SANITIZED ARGUMENT: " + rightName + " sanitized " + leftName + " in line " + str(arg['loc']['start']))
             node['LabelList'].mergeWith(arg['LabelList'])
             explicit_vulnerabilities += LabelList.findExplicitVulns(callee['LabelList'].sinks, arg['LabelList'].sources, node)
