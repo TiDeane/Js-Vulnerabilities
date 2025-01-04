@@ -150,13 +150,13 @@ class LabelList:
         self.sources = []
         self.sinks = []
         self.vulns = []
-        self.sanitizers = []
+        self.sanitizers = {}
         
     def mergeWith(self, other: LabelList):
         self.sources = mergeListsOrdered(self.sources, other.sources)
         self.sinks = mergeListsOrdered(self.sinks, other.sinks)
         self.vulns = mergeListsOrdered(self.vulns, other.vulns)
-        self.sanitizers += other.sanitizers
+        self.sanitizers.update(other.sanitizers)
         
     @staticmethod
     def findExplicitVulns(sinks, sources, node):
@@ -165,9 +165,9 @@ class LabelList:
             for source in sources:
                 sanitized_flows = []
                 if sink.vuln == source.vuln and (source.vuln, source.source, source.line, sink.sink, sink.line) not in found_vulns:
-                    for sanitizer_list in node['LabelList'].sanitizers:
+                    for flow_id in node['LabelList'].sanitizers:
                         sanitized_flow_aux = []
-                        for sanitizer in sanitizer_list:
+                        for sanitizer in node['LabelList'].sanitizers[flow_id]:
                             if source.vuln == sanitizer.vuln and source.source == sanitizer.source:
                                 sanitized_flow_aux.append([sanitizer.sanitizer, sanitizer.line])
                         sanitized_flows.append(sanitized_flow_aux) if sanitized_flow_aux else None
@@ -187,7 +187,7 @@ class LabelList:
             "vulns": [vuln.to_dict() for vuln in self.vulns],
             "sources": [source.to_dict() for source in self.sources],
             "sinks": [sink.to_dict() for sink in self.sinks],
-            "sanitizers":[[sanitizer.to_dict() for sanitizer in subsanitizers] for subsanitizers in self.sanitizers],
+            #"sanitizers": self.sanitizers
         }
 
     def __str__(self):
@@ -272,7 +272,11 @@ def check_sanitized(identifier, node):
         source = aux['source']
         line = aux['loc']['start']['line']
         sanitizers_aux.append(Sanitizer(vuln, sanitizer, identifier, source, line))
-    node['LabelList'].sanitizers.append(sanitizers_aux) if sanitizers_aux else None
+        global flow
+        flow += 1
+        flow_id = flow
+        node['LabelList'].sanitizers[flow_id] = [] if flow_id not in node['LabelList'].sanitizers else node['LabelList'].sanitizers[flow_id]
+        node['LabelList'].sanitizers[flow_id].append(Sanitizer(vuln, sanitizer, identifier, source, line))
 
 new_identifiers = {}  # Dict of identifier to their LabelList to keep track of new declared identifiers and the vulnerabilities
           
@@ -424,21 +428,17 @@ def label_call(node):
         global aux_flow
         
         for arg in arguments:
-            prev_flow = flow
+            flow_id = flow
             print("traversing argument")
-            print(f"node {get_node_name(node)} merging with arg {get_node_name(arg)}")
             traverse(arg, False)
             
             leftName = get_node_name(arg)
             for sanitizer in sanitizers:
                 if rightName == sanitizer[0]:
                     if leftName != None:
-                        if prev_flow == flow:
-                            arg['LabelList'].sanitizers.append(aux_flow) if aux_flow else None
-                            aux_flow = []
-                            aux_flow.append(Sanitizer(sanitizer[1], sanitizer[0], get_node_name(arg), sanitizer[2], node['loc']['start']['line']))
-                        else:
-                            aux_flow.append(Sanitizer(sanitizer[1], sanitizer[0], get_node_name(arg), sanitizer[2], node['loc']['start']['line']))
+                        print(f"node {get_node_name(node)} merging with arg {get_node_name(arg)}")
+                        arg['LabelList'].sanitizers[flow_id] = [] if flow_id not in arg['LabelList'].sanitizers else arg['LabelList'].sanitizers[flow_id]
+                        arg['LabelList'].sanitizers[flow_id].append(Sanitizer(sanitizer[1], sanitizer[0], get_node_name(arg), sanitizer[2], node['loc']['start']['line']))
                         print("SANITIZED ARGUMENT: " + rightName + " sanitized " + leftName + " in line " + str(arg['loc']['start']))
             node['LabelList'].mergeWith(arg['LabelList'])
             explicit_vulnerabilities += LabelList.findExplicitVulns(callee['LabelList'].sinks, arg['LabelList'].sources, node)
