@@ -240,6 +240,8 @@ def get_node_name(node):
             return node['name']
         case "CallExpression":
             return node['callee']['name']
+        case "MemberExpression":
+            return node['object']['name']
         case _:
             return None
         
@@ -290,7 +292,7 @@ def check_sanitized(identifier, node):
 new_identifiers = {}  # Dict of identifier to their LabelList to keep track of new declared identifiers and the vulnerabilities
           
 # Traverses every node in the AST
-def traverse(node, left=True):
+def traverse(node, left=True, attr=False):
     if isinstance(node, dict):
         match node.get('type'):
             case 'Program':
@@ -302,13 +304,17 @@ def traverse(node, left=True):
             case 'Identifier' if left:
                 label_identifier_left(node)
             case 'Identifier' if not left:
-                label_identifier_right(node)
+                label_identifier_right(node, attr)
             case 'CallExpression':
                 label_call(node)
             case 'Literal':
                 label_literal(node)
             case 'BinaryExpression':
                 label_binaryexpr(node)
+            case 'MemberExpression' if left:
+                label_memberexpr_left(node)
+            case 'MemberExpression' if not left:
+                label_memberexpr_right(node)
             case _:
                 print("Error: Unknown node type")
 
@@ -346,7 +352,9 @@ def label_assignment(node):
         explicit_vulnerabilities = LabelList.findExplicitVulns(left['LabelList'].sinks, right['LabelList'].sources, node)  # Add new explicit vulnerabilities found
         node['LabelList'].vulns += explicit_vulnerabilities
         
-        new_identifiers[left['name']] = node['LabelList']  # Add left identifier and LabelList for future use
+        if left['type'] == "MemberExpression":
+            return
+        new_identifiers[get_node_name(left)] = node['LabelList']  # Add left identifier and LabelList for future use
         #print("Assignment node vulns: " + str(node['LabelList']))
 
         leftName = get_node_name(left)
@@ -381,7 +389,7 @@ def label_identifier_left(node):
         #print(f"node {node['name']}'s sources: {node['LabelList'].sources}")
         #print("Identifier Left node vulns: " + str(node['LabelList']))
 
-def label_identifier_right(node):
+def label_identifier_right(node, attr=False):
     if isinstance(node, dict):
         print("Labeling identifier (right)")
         print(f"{node['name']} in new_identfiers? - {node['name'] in new_identifiers}")
@@ -409,8 +417,9 @@ def label_identifier_right(node):
                 for pattern in source_to:
                     node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
             else:
-                for pattern in vuln_dict:
-                    node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
+                if not attr:
+                    for pattern in vuln_dict:
+                        node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
         #print("Identifier Right node vulns: " + str(node['LabelList']))
 
 def label_literal(node):
@@ -467,6 +476,33 @@ def label_binaryexpr(node):
         traverse(right, False)
         node['LabelList'].mergeWith(left['LabelList'])
         node['LabelList'].mergeWith(right['LabelList'])
+
+def label_memberexpr_left(node):
+    print("Labelling member expression (left)")
+    if isinstance(node, dict):
+        node['LabelList'] = LabelList()
+        obj = node['object']
+        attr = node['property']
+        traverse(obj, True)
+        traverse(attr, False, True)
+        node['LabelList'].mergeWith(obj['LabelList'])
+        node['LabelList'].mergeWith(attr['LabelList'])
+        print("member node:\n"+str(node['LabelList']))
+
+def label_memberexpr_right(node):
+    print("Labelling member expression (right)")
+    if isinstance(node, dict):
+        node['LabelList'] = LabelList()
+        obj = node['object']
+        attr = node['property']
+        print(f"traversing {obj['name']} and {attr['name']}")
+        traverse(obj, False)
+        traverse(attr, False, True)
+        for attr_source in attr['LabelList'].sources:
+            obj['LabelList'].sources.append(Source(attr_source.vuln, get_node_name(obj), node['loc']['start']['line']))
+        node['LabelList'].mergeWith(obj['LabelList'])
+        node['LabelList'].mergeWith(attr['LabelList'])
+        print("member node:\n"+str(node['LabelList']))
 
 def main(vulnDict, root):
     global vuln_dict
