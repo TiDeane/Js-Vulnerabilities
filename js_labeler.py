@@ -315,6 +315,10 @@ def traverse(node, left=True, attr=False):
                 label_memberexpr_left(node)
             case 'MemberExpression' if not left:
                 label_memberexpr_right(node)
+            case 'IfStatement':
+                label_ifstmt(node)
+            case 'BlockStatement':
+                label_block(node)
             case _:
                 print("Error: Unknown node type")
 
@@ -487,7 +491,7 @@ def label_memberexpr_left(node):
         traverse(attr, False, True)
         node['LabelList'].mergeWith(obj['LabelList'])
         node['LabelList'].mergeWith(attr['LabelList'])
-        print("member node:\n"+str(node['LabelList']))
+        #print("member node:\n"+str(node['LabelList']))
 
 def label_memberexpr_right(node):
     print("Labelling member expression (right)")
@@ -502,7 +506,28 @@ def label_memberexpr_right(node):
             obj['LabelList'].sources.append(Source(attr_source.vuln, get_node_name(obj), node['loc']['start']['line']))
         node['LabelList'].mergeWith(obj['LabelList'])
         node['LabelList'].mergeWith(attr['LabelList'])
-        print("member node:\n"+str(node['LabelList']))
+        #print("member node:\n"+str(node['LabelList']))
+
+def label_ifstmt(node):
+    print("Labelling if statement")
+    if isinstance(node, dict):
+        node['LabelList'] = LabelList()
+        then_stmt = node['consequent']
+        traverse(then_stmt)
+        node['LabelList'].mergeWith(then_stmt['LabelList'])
+        if 'alternate' in node:
+            else_stmt = node['alternate']
+            traverse(else_stmt)
+            node['LabelList'].mergeWith(else_stmt['LabelList'])
+
+def label_block(node):
+    print("Labelling block statement")
+    if isinstance(node, dict):
+        node['LabelList'] = LabelList()
+        for expr in node['body']:
+            traverse(expr)
+            node['LabelList'].mergeWith(expr['LabelList'])
+
 
 def main(vulnDict, root):
     global vuln_dict
