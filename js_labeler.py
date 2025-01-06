@@ -152,7 +152,7 @@ class LabelList:
         self.sources = []
         self.sinks = []
         self.vulns = []
-        self.sanitizers = {}
+        self.sanitizers = {}    # dict of lists, key is an id that indicates all sanitizers in that list belong to the same flow
         
     def mergeWith(self, other: LabelList):
         self.sources = mergeListsOrdered(self.sources, other.sources)
@@ -167,13 +167,12 @@ class LabelList:
             for source in sources:
                 sanitized_flows = []
                 if sink.vuln == source.vuln and (source.vuln, source.source, source.line, sink.sink, sink.line) not in found_vulns:
+                    # look at every sanitized flow and check if it belongs to the vulnerability
                     for flow_id in node['LabelList'].sanitizers:
                         sanitized_flow_aux = []
                         for sanitizer in node['LabelList'].sanitizers[flow_id]:
                             if source.vuln == sanitizer.vuln and source.source == sanitizer.source:
                                 sanitized_flow_aux.append([sanitizer.sanitizer, sanitizer.line])
-                                print("\nHERRRRRREEEEEE\n")
-                                print(get_node_name(node))
                         sanitized_flows.append(sanitized_flow_aux) if sanitized_flow_aux else None
                     vulns.append(Vuln(getSequentialId(sink.vuln), source.source, source.line, sink.sink, sink.line, source.unsanitized, sanitized_flows, "no", node['loc']['start']['line']))
                     found_vulns.append((source.vuln, source.source, source.line, sink.sink, sink.line))
@@ -246,7 +245,8 @@ def get_node_name(node):
             return None
         
 sanitized_identifiers = {} # Dict of identifiers that are sanitized and their location
-        
+
+# UNUSED
 def check_sanitized(identifier, node):
     if identifier not in sanitized_identifiers:
         return
@@ -292,7 +292,7 @@ def check_sanitized(identifier, node):
 # Stores all identifiers as if every branch has been chosen
 new_identifiers = {} # Dict of identifier to their LabelList to keep track of new declared identifiers and the vulnerabilities
 # Stores identifiers as if the minimum amount of branches has been chosen (only saves the identifiers that are guaranteed to exists)
-new_identifiers_context = [{}, {}, {}]  # Dict of identifier to their LabelList to keep track of new declared identifiers and the vulnerabilities
+new_identifiers_context = [{}, {}, {}]  # TODO: make the size variable
 context = 0 # index of new_identifiers
 
 # Traverses every node in the AST
@@ -363,9 +363,10 @@ def label_assignment(node):
         if left['type'] == "MemberExpression":
             return
         new_identifiers[get_node_name(left)] = node['LabelList']  # Add left identifier and LabelList for future use
-        new_identifiers_context[context][get_node_name(left)] = node['LabelList']  # Add left identifier and LabelList for future use
+        new_identifiers_context[context][get_node_name(left)] = node['LabelList']  # (only in that context)
         print("Assignment node vulns: " + str(node['LabelList']))
 
+        # UNUSED: add to 'sanitized_identifiers'
         """
         leftName = get_node_name(left)
         rightName = get_node_name(right)
@@ -443,8 +444,7 @@ def label_literal(node):
     if isinstance(node, dict):
         node['LabelList'] = LabelList()
 
-flow = 0
-aux_flow = []
+flow = 0    # used to group nested calls
 
 def label_call(node):
     print("Labeling call")
@@ -459,10 +459,9 @@ def label_call(node):
         arguments = node["arguments"]
         rightName = get_node_name(callee)
         global flow
-        global aux_flow
         
         for arg in arguments:
-            flow_id = flow
+            flow_id = flow  # this id will be the same in all calls that are in the same nested
             print("traversing argument")
             traverse(arg, False)
             
@@ -470,8 +469,6 @@ def label_call(node):
             for sanitizer in sanitizers:
                 if rightName == sanitizer[0]:
                     if leftName != None:
-                        print("\nAISDJAIOSD\n")
-                        print(sanitized_identifiers)
                         print(f"node {get_node_name(node)} merging with arg {get_node_name(arg)}")
                         arg['LabelList'].sanitizers[flow_id] = [] if flow_id not in arg['LabelList'].sanitizers else arg['LabelList'].sanitizers[flow_id]
                         arg['LabelList'].sanitizers[flow_id].append(Sanitizer(sanitizer[1], sanitizer[0], get_node_name(arg), sanitizer[2], node['loc']['start']['line'], flow_id))
