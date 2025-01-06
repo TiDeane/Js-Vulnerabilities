@@ -332,7 +332,7 @@ def check_sanitized(identifier, node):
 new_identifiers = {} # Dict of identifier to their LabelList to keep track of new declared identifiers and the vulnerabilities
 # Stores identifiers as if the minimum amount of branches has been chosen (only saves the identifiers that are guaranteed to exists)
 new_identifiers_context = [{}, {}, {}]  # TODO: make the size variable
-context = 0 # index of new_identifiers
+level = 0 # index of new_identifiers
 
 # Traverses every node in the AST
 def traverse(node, left=True, attr=False):
@@ -401,7 +401,7 @@ def label_assignment(node):
         if left['type'] == "MemberExpression":
             return
         new_identifiers[get_node_name(left)] = node['LabelList']  # Add left identifier and LabelList for future use
-        new_identifiers_context[context][get_node_name(left)] = node['LabelList']  # (only in that context)
+        new_identifiers_context[level][get_node_name(left)] = node['LabelList']  # (only in that level)
         print(f"Assignment node, in {node['loc']['start']}, vulns: " + str(node['LabelList']))
 
         # UNUSED: add to 'sanitized_identifiers'
@@ -452,7 +452,7 @@ def label_identifier_right(node, attr=False):
             for pattern in source_patterns:
                 node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
             # check if, assuming the minimum amount of branches travelled, 'identifier' exists
-            if any(identifier in new_identifiers_context[i] for i in range(0, context + 1)):
+            if any(identifier in new_identifiers_context[i] for i in range(0, level + 1)):
                 in_new_identifiers_context = True
         print(f"{node['name']} in new_identfiers? - {node['name'] in new_identifiers}")
         print(f"{node['name']} in new_identfiers_context? - {in_new_identifiers_context}")
@@ -558,26 +558,26 @@ def label_memberexpr_right(node):
 
 def label_ifstmt(node):
     print("Labelling if statement")
-    global context
+    global level
     if isinstance(node, dict):
-        context += 1
-        new_identifiers_context[context] = {}
+        level += 1
+        new_identifiers_context[level] = {}
         node['LabelList'] = LabelList()
         test_stmt = node ['test']
         traverse(test_stmt)
         then_stmt = node['consequent']
         traverse(then_stmt)
         node['LabelList'].mergeWith(then_stmt['LabelList'])
-        new_identifiers_context[context] = {}
-        context -= 1
+        new_identifiers_context[level] = {}
+        level -= 1
         if 'alternate' in node:
-            context +=1
-            new_identifiers_context[context] = {}
+            level +=1
+            new_identifiers_context[level] = {}
             else_stmt = node['alternate']
             traverse(else_stmt)
             node['LabelList'].mergeWith(else_stmt['LabelList'])
-            new_identifiers_context[context] = {}
-            context -=1
+            new_identifiers_context[level] = {}
+            level -=1
 
 def label_block(node):
     print("Labelling block statement")
