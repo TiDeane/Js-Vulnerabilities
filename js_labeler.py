@@ -471,7 +471,7 @@ def label_call(node):
         for arg in arguments:
             flow_id = flow  # this id will be the same in all calls that are in the same nested
             print("traversing argument")
-            traverse(arg, False, True)
+            traverse(arg, False)
             
             leftName = get_node_name(arg)
             for sanitizer in sanitizers:
