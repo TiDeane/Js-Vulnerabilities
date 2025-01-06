@@ -289,7 +289,10 @@ def check_sanitized(identifier, node):
         node['LabelList'].sanitizers[flow_id] = [] if flow_id not in node['LabelList'].sanitizers else node['LabelList'].sanitizers[flow_id]
         node['LabelList'].sanitizers[flow_id].append(Sanitizer(vuln, sanitizer, identifier, source, line, flow_id))
 
-new_identifiers = [{}, {}, {}]  # Dict of identifier to their LabelList to keep track of new declared identifiers and the vulnerabilities
+# Stores all identifiers as if every branch has been chosen
+new_identifiers = {} # Dict of identifier to their LabelList to keep track of new declared identifiers and the vulnerabilities
+# Stores identifiers as if the minimum amount of branches has been chosen (only saves the identifiers that are guaranteed to exists)
+new_identifiers_context = [{}, {}, {}]  # Dict of identifier to their LabelList to keep track of new declared identifiers and the vulnerabilities
 context = 0 # index of new_identifiers
 
 # Traverses every node in the AST
@@ -359,9 +362,11 @@ def label_assignment(node):
         
         if left['type'] == "MemberExpression":
             return
-        new_identifiers[context][get_node_name(left)] = node['LabelList']  # Add left identifier and LabelList for future use
-        #print("Assignment node vulns: " + str(node['LabelList']))
+        new_identifiers[get_node_name(left)] = node['LabelList']  # Add left identifier and LabelList for future use
+        new_identifiers_context[context][get_node_name(left)] = node['LabelList']  # Add left identifier and LabelList for future use
+        print("Assignment node vulns: " + str(node['LabelList']))
 
+        """
         leftName = get_node_name(left)
         rightName = get_node_name(right)
         for sanitizer in sanitizers:
@@ -379,7 +384,8 @@ def label_assignment(node):
                 aux_dict['loc']['end'] = {'line': 0, 'column': 0}
                 sanitized_identifiers[leftName].append(aux_dict)
                 print("Sanitized identifiers: " + str(sanitized_identifiers))
-             
+        """
+        
         
 def label_identifier_left(node):
     if isinstance(node, dict):
@@ -399,18 +405,19 @@ def label_identifier_right(node, attr=False):
         print("Labeling identifier (right)")
         node['LabelList'] = LabelList()
         identifier = node['name']
-        in_new_identifiers = False
-        for i in range(0, context+1):
-            if identifier in new_identifiers[i]:
-                in_new_identifiers = True
-                node['LabelList'].mergeWith(new_identifiers[i][identifier])
-                source_patterns = searchVulnerabilityDictSources(identifier)
-                #check_sanitized(identifier, node)
-                for pattern in source_patterns:
-                    node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
-                break
-        print(f"{node['name']} in new_identfiers? - {in_new_identifiers}")
-        if not in_new_identifiers:
+        in_new_identifiers_context = False
+        if identifier in new_identifiers:
+            node['LabelList'].mergeWith(new_identifiers[identifier])
+            source_patterns = searchVulnerabilityDictSources(identifier)
+            #check_sanitized(identifier, node)
+            for pattern in source_patterns:
+                node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
+            # check if, assuming the minimum amount of branches travelled, 'identifier' exists
+            if any(identifier in new_identifiers_context[i] for i in range(0, context + 1)):
+                in_new_identifiers_context = True
+        print(f"{node['name']} in new_identfiers? - {node['name'] in new_identifiers}")
+        print(f"{node['name']} in new_identfiers_context? - {in_new_identifiers_context}")
+        if not in_new_identifiers_context:
             sink_patterns = searchVulnerabilityDictSinks(identifier)
             for pattern in sink_patterns:
                 node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, node['loc']['start']['line']))
@@ -469,6 +476,7 @@ def label_call(node):
                         arg['LabelList'].sanitizers[flow_id] = [] if flow_id not in arg['LabelList'].sanitizers else arg['LabelList'].sanitizers[flow_id]
                         arg['LabelList'].sanitizers[flow_id].append(Sanitizer(sanitizer[1], sanitizer[0], get_node_name(arg), sanitizer[2], node['loc']['start']['line'], flow_id))
                         print("SANITIZED ARGUMENT: " + rightName + " sanitized " + leftName + " in line " + str(arg['loc']['start']))
+            #print(f"Arg {get_node_name(arg)} node vulns: " + str(arg['LabelList']))
             node['LabelList'].mergeWith(arg['LabelList'])
             explicit_vulnerabilities += LabelList.findExplicitVulns(callee['LabelList'].sinks, arg['LabelList'].sources, node)
         flow += 1
@@ -518,22 +526,22 @@ def label_ifstmt(node):
     global context
     if isinstance(node, dict):
         context += 1
-        new_identifiers[context] = {}
+        new_identifiers_context[context] = {}
         node['LabelList'] = LabelList()
         test_stmt = node ['test']
         traverse(test_stmt)
         then_stmt = node['consequent']
         traverse(then_stmt)
         node['LabelList'].mergeWith(then_stmt['LabelList'])
-        new_identifiers[context] = {}
+        new_identifiers_context[context] = {}
         context -= 1
         if 'alternate' in node:
             context +=1
-            new_identifiers[context] = {}
+            new_identifiers_context[context] = {}
             else_stmt = node['alternate']
             traverse(else_stmt)
             node['LabelList'].mergeWith(else_stmt['LabelList'])
-            new_identifiers[context] = {}
+            new_identifiers_context[context] = {}
             context -=1
 
 def label_block(node):
