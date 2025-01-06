@@ -168,13 +168,21 @@ class LabelList:
                 sanitized_flows = []
                 if sink.vuln == source.vuln and (source.vuln, source.source, source.line, sink.sink, sink.line) not in found_vulns:
                     # look at every sanitized flow and check if it belongs to the vulnerability
-                    for flow_id in node['LabelList'].sanitizers:
-                        sanitized_flow_aux = []
-                        for sanitizer in node['LabelList'].sanitizers[flow_id]:
-                            if source.vuln == sanitizer.vuln and source.source == sanitizer.source:
-                                sanitized_flow_aux.append([sanitizer.sanitizer, sanitizer.line])
-                        sanitized_flows.append(sanitized_flow_aux) if sanitized_flow_aux else None
-                    vulns.append(Vuln(getSequentialId(sink.vuln), source.source, source.line, sink.sink, sink.line, source.unsanitized, sanitized_flows, "no", node['loc']['start']['line']))
+                    unsanitized_flows = "no"
+                    if not node['LabelList'].sanitizers:
+                        # no sanitizers exist
+                        unsanitized_flows = "yes"
+                    else:
+                        for flow_id in node['LabelList'].sanitizers:
+                            sanitized_flow_aux = []
+                            for sanitizer in node['LabelList'].sanitizers[flow_id]:
+                                if source.vuln == sanitizer.vuln and source.source == sanitizer.source:
+                                    sanitized_flow_aux.append([sanitizer.sanitizer, sanitizer.line])
+                            if sanitized_flow_aux == []:
+                                unsanitized_flows = "yes"
+                            else:
+                                sanitized_flows.append(sanitized_flow_aux)
+                    vulns.append(Vuln(getSequentialId(sink.vuln), source.source, source.line, sink.sink, sink.line, unsanitized_flows, sanitized_flows, "no", node['loc']['start']['line']))
                     found_vulns.append((source.vuln, source.source, source.line, sink.sink, sink.line))
 
         return vulns
@@ -364,7 +372,7 @@ def label_assignment(node):
             return
         new_identifiers[get_node_name(left)] = node['LabelList']  # Add left identifier and LabelList for future use
         new_identifiers_context[context][get_node_name(left)] = node['LabelList']  # (only in that context)
-        print("Assignment node vulns: " + str(node['LabelList']))
+        print(f"Assignment node, in {node['loc']['start']}, vulns: " + str(node['LabelList']))
 
         # UNUSED: add to 'sanitized_identifiers'
         """
@@ -463,7 +471,7 @@ def label_call(node):
         for arg in arguments:
             flow_id = flow  # this id will be the same in all calls that are in the same nested
             print("traversing argument")
-            traverse(arg, False)
+            traverse(arg, False, True)
             
             leftName = get_node_name(arg)
             for sanitizer in sanitizers:
@@ -478,7 +486,7 @@ def label_call(node):
             explicit_vulnerabilities += LabelList.findExplicitVulns(callee['LabelList'].sinks, arg['LabelList'].sources, node)
         flow += 1
         node['LabelList'].vulns += explicit_vulnerabilities
-        print("Call node vulns: " + str(node['LabelList']))
+        print(f"Call node, in {node['loc']['start']}, vulns: " + str(node['LabelList']))
         
 def label_binaryexpr(node):
     print("Labelling binary expression")
