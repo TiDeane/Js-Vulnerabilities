@@ -289,8 +289,9 @@ def check_sanitized(identifier, node):
         node['LabelList'].sanitizers[flow_id] = [] if flow_id not in node['LabelList'].sanitizers else node['LabelList'].sanitizers[flow_id]
         node['LabelList'].sanitizers[flow_id].append(Sanitizer(vuln, sanitizer, identifier, source, line, flow_id))
 
-new_identifiers = {}  # Dict of identifier to their LabelList to keep track of new declared identifiers and the vulnerabilities
-          
+new_identifiers = [{}, {}, {}]  # Dict of identifier to their LabelList to keep track of new declared identifiers and the vulnerabilities
+context = 0 # index of new_identifiers
+
 # Traverses every node in the AST
 def traverse(node, left=True, attr=False):
     if isinstance(node, dict):
@@ -358,7 +359,7 @@ def label_assignment(node):
         
         if left['type'] == "MemberExpression":
             return
-        new_identifiers[get_node_name(left)] = node['LabelList']  # Add left identifier and LabelList for future use
+        new_identifiers[context][get_node_name(left)] = node['LabelList']  # Add left identifier and LabelList for future use
         #print("Assignment node vulns: " + str(node['LabelList']))
 
         leftName = get_node_name(left)
@@ -396,16 +397,20 @@ def label_identifier_left(node):
 def label_identifier_right(node, attr=False):
     if isinstance(node, dict):
         print("Labeling identifier (right)")
-        print(f"{node['name']} in new_identfiers? - {node['name'] in new_identifiers}")
         node['LabelList'] = LabelList()
         identifier = node['name']
-        if identifier in new_identifiers:
-            node['LabelList'].mergeWith(new_identifiers[identifier])
-            source_patterns = searchVulnerabilityDictSources(identifier)
-            #check_sanitized(identifier, node)
-            for pattern in source_patterns:
-                node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
-        else:
+        in_new_identifiers = False
+        for i in range(0, context+1):
+            if identifier in new_identifiers[i]:
+                in_new_identifiers = True
+                node['LabelList'].mergeWith(new_identifiers[i][identifier])
+                source_patterns = searchVulnerabilityDictSources(identifier)
+                #check_sanitized(identifier, node)
+                for pattern in source_patterns:
+                    node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, node['loc']['start']['line']))
+                break
+        print(f"{node['name']} in new_identfiers? - {in_new_identifiers}")
+        if not in_new_identifiers:
             sink_patterns = searchVulnerabilityDictSinks(identifier)
             for pattern in sink_patterns:
                 node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, node['loc']['start']['line']))
@@ -440,7 +445,7 @@ def label_call(node):
         callee = node["callee"]
         node['LabelList'] = LabelList()
         print("callee = " + str(callee))
-        traverse(callee, False)
+        traverse(callee, False, True)   # Callee identifier won't be added to 'new_identifiers'
         node['LabelList'].mergeWith(callee['LabelList'])   # Accumulates the vulnerabilites of the expression it states
 
         explicit_vulnerabilities = []
@@ -510,15 +515,26 @@ def label_memberexpr_right(node):
 
 def label_ifstmt(node):
     print("Labelling if statement")
+    global context
     if isinstance(node, dict):
+        context += 1
+        new_identifiers[context] = {}
         node['LabelList'] = LabelList()
+        test_stmt = node ['test']
+        traverse(test_stmt)
         then_stmt = node['consequent']
         traverse(then_stmt)
         node['LabelList'].mergeWith(then_stmt['LabelList'])
+        new_identifiers[context] = {}
+        context -= 1
         if 'alternate' in node:
+            context +=1
+            new_identifiers[context] = {}
             else_stmt = node['alternate']
             traverse(else_stmt)
             node['LabelList'].mergeWith(else_stmt['LabelList'])
+            new_identifiers[context] = {}
+            context -=1
 
 def label_block(node):
     print("Labelling block statement")
