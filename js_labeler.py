@@ -456,6 +456,7 @@ def label_identifier_right(node, attr=False):
             if any(identifier in new_identifiers_level[i] for i in range(0, level + 1)):
                 in_new_identifiers_context = True
                 if identifier in new_identifiers_level[level]:
+                    # this should only be matter when going down a level
                     node['LabelList'].mergeWith(new_identifiers_level[level][identifier])
                     print(node['LabelList'])
         print(f"{node['name']} in new_identfiers? - {node['name'] in new_identifiers}")
