@@ -1,0 +1,17 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File with Arguments",
+            "justMyCode": false,
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "./slices/2-expr-binary-ops.js",
+                "./patterns/2-expr-binary-ops.patterns.json"
+            ]
+        }
+    ]
+}
