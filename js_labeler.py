@@ -455,8 +455,9 @@ def label_identifier_right(node, attr=False):
             # check if, assuming the minimum amount of branches travelled, 'identifier' exists
             if any(identifier in new_identifiers_level[i] for i in range(0, level + 1)):
                 in_new_identifiers_context = True
-                #print("\n\n\nASIDJAS\n")
-                #print(new_identifiers_level)
+                if identifier in new_identifiers_level[level]:
+                    node['LabelList'].mergeWith(new_identifiers_level[level][identifier])
+                    print(node['LabelList'])
         print(f"{node['name']} in new_identfiers? - {node['name'] in new_identifiers}")
         print(f"{node['name']} in new_identfiers_context? - {in_new_identifiers_context}")
         if not in_new_identifiers_context:
