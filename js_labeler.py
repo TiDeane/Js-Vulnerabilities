@@ -365,8 +365,5 @@ def main(vulnDict, root):
     vuln_dict = vulnDict
     traverse(root)
     addSequentialIds()
-    print(new_identifiers)
-    for id in new_identifiers:
-        print(new_identifiers[id])
     with open(f"test_tree.json", "w") as outfile: 
         json.dump([vuln.to_dict() for vuln in vulnerabilities], outfile, indent=4)
