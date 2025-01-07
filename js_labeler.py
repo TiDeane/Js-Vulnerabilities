@@ -15,12 +15,13 @@ def addSequentialIds():
             sequentialIds[vuln.vuln[0]] = 1
         vuln.vuln += "_" + str(sequentialIds[vuln.vuln[0]])     # Adds a number to each of the vulnerablities (B_1, B_2 Etc)
 
-def addVulnerability(self, new_vuln: Vuln):
+def addVulnerability(new_vuln: Vuln):
         for vuln in vulnerabilities:
-            if vuln.vuln == new_vuln.vuln and vuln.source == new_vuln.source and vuln.sink == new_vuln.sink:
+            if vuln.vuln == new_vuln.vuln and vuln.source == new_vuln.source and vuln.sink == new_vuln.sink and vuln.sourceline == new_vuln.sourceline and vuln.sinkline == new_vuln.sinkline:
                 vuln.sanitized_flows += new_vuln.sanitized_flows
+                vuln.unsanitized_flows = "yes" if new_vuln.sanitized_flows == [] else vuln.unsanitized_flows
                 return
-        self.vulns.append(new_vuln)              # Adds a vulnerability or just a new flow if it already exists
+        vulnerabilities.append(new_vuln)              # Adds a vulnerability or just a new flow if it already exists
         
 class Label:
     def __init__(self, line):
@@ -45,7 +46,7 @@ class Vuln(Label):
         self.sink = sink
         self.sinkline = sinkline
         self.unsanitized_flows = unsanitized_flows
-        self.sanitized_flows = sanitized_flows
+        self.sanitized_flows = [sanitized_flows] if sanitized_flows != [] else []
         self.implicit = implicit
 
     def to_dict(self):
@@ -114,7 +115,7 @@ class LabelList:
                     
     def inSources(self, vuln, identifier):
         for source in self.sources:
-            if source.vuln == vuln and source.identifier == identifier:
+            if source.vuln == vuln and source.source == identifier:
                 return True
         return False
 
@@ -163,6 +164,13 @@ def getVulnerabilityPattern(vuln):  # Gets the vulnerability pattern correspondi
     for pattern in vuln_dict:
         if pattern['vulnerability'] == vuln:
             return pattern
+        
+def isSanitizer(identifier):
+    for pattern in vuln_dict:
+        for sanitizer in pattern['sanitizers']:
+            if identifier == sanitizer:
+                return True
+    return False
           
 # Traverses every node in the AST
 def traverse(node, left=True):
@@ -210,11 +218,8 @@ def label_assignment(node):
         node['LabelList'].sinks = copy.deepcopy(left['LabelList'].sinks)
         node['LabelList'].sinks += copy.deepcopy(right['LabelList'].sinks)
         
-        for source in right['LabelList'].sources:  # If source is sanitized the source line stays the same, else it becomes the assignment's line
-            if source.unsanitized == "yes":
-                node['LabelList'].sources.append(Source(source.vuln, source.source, source.unsanitized, source.sanitized, node['loc']['start']['line']))
-            elif source.unsanitized == "no":
-                node['LabelList'].sources.append(copy.deepcopy(source))
+        for source in right['LabelList'].sources:  # Copy sources
+            node['LabelList'].sources.append(copy.deepcopy(source))
             
         LabelList.findExplicitVulns(left['LabelList'].sinks, right['LabelList'].sources, node['loc']['start']['line'])  # Add new explicit vulnerabilities found
 
@@ -245,17 +250,16 @@ def label_identifier_right(node):
                     
         else:                                    # Else add the sources and sinks from the vuln_dict directly, if there is no information about the identifier assume all sources or sinks
             source_patterns, sink_patterns = searchVulnerabilityDict(identifier)
-            if source_patterns == []:
+            sanitizer = isSanitizer(identifier)
+            if source_patterns == [] and not sanitizer:
                 node['LabelList'].sources = addAllSources(identifier, node['loc']['start']['line'])
-            else:
-                for pattern in source_patterns:
-                    node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, "yes", [], node['loc']['start']['line'], pattern['sanitizers']))
-                    
-            if sink_patterns == []:
+            if sink_patterns == [] and not sanitizer:
                 node['LabelList'].sinks = addAllSinks(identifier, node['loc']['start']['line'])
-            else:
-                for pattern in sink_patterns:
-                    node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, pattern['implicit'], node['loc']['start']['line']))
+
+            for pattern in source_patterns:
+                node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, "yes", [], node['loc']['start']['line'], pattern['sanitizers']))
+            for pattern in sink_patterns:
+                node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, pattern['implicit'], node['loc']['start']['line']))   
                 
 def addAllSources(identifier, line):
     result = []
@@ -282,42 +286,36 @@ def label_call(node):
     
         traverse(callee, False)
         
-        node['LabelList'].mergeWith(callee['LabelList'], node['loc']['start']['line'])   # Accumulates the vulnerabilites of the expression it states
+        for source in callee['LabelList'].sources:     # Copy callee's sources and sinks
+            node['LabelList'].sources.append(Source(source.vuln, source.source, source.unsanitized, source.sanitized, node['loc']['start']['line'], source.sanitizers))
+            
+        for sink in callee['LabelList'].sinks:
+            node['LabelList'].sinks.append(Sink(sink.vuln, sink.sink, sink.implicit, node['loc']['start']['line']))
 
-        explicit_vulnerabilities = []
         arguments = node["arguments"]
 
-        #print("callee name:" + callee['name'])
         for arg in arguments:
             traverse(arg, False)
-            #print("arg labelist sources")
-            #print(arg['LabelList'].sources)
-            #print("arg type:" + arg['type'])
-            for source in arg['LabelList'].sources:
-                #print("source name:" + source.source)
-                if callee['name'] in source.sanitizers:
-                    #print("Is sanitized")
-                    source.sanitized.append([callee['name'], node['loc']['start']['line']])
-            #print("-----")
-            node['LabelList'].mergeWith(arg['LabelList'], 0)
-            explicit_vulnerabilities += LabelList.findExplicitVulns(callee['LabelList'].sinks, arg['LabelList'].sources, node['loc']['start']['line'])
 
-        for new_vuln in explicit_vulnerabilities:
-            node['LabelList'].addVulnerabilityFlow(new_vuln)
-        #print("Call node vulns: " + str(node['LabelList']))
+            for source in arg['LabelList'].sources:     # Check for sanitization and add sources
+                if callee['name'] in source.sanitizers:
+                    source.sanitized.append([callee['name'], node['loc']['start']['line']])
+                    source.unsanitized = "no"
+
+                node['LabelList'].sources.append(copy.deepcopy(source))
+                
+            LabelList.findExplicitVulns(callee['LabelList'].sinks, arg['LabelList'].sources, node['loc']['start']['line'])
+            
         
 def label_binaryexpr(node):
-    #print("Labelling binary expression")
     if isinstance(node, dict):
         node['LabelList'] = LabelList()
         left = node['left']
         right = node['right']
         traverse(left, False)
         traverse(right, False)
-        #print(left['LabelList'].sources)
-        #print(right['LabelList'].sources)
-        node['LabelList'].mergeWith(left['LabelList'], node['loc']['start']['line'])
-        node['LabelList'].mergeWith(right['LabelList'], node['loc']['start']['line'])
+        node['LabelList'].sinks = copy.deepcopy(left['LabelList'].sinks) + copy.deepcopy(right['LabelList'].sinks)
+        node['LabelList'].sources = copy.deepcopy(left['LabelList'].sources) + copy.deepcopy(right['LabelList'].sources)
 
 def main(vulnDict, root):
     global vuln_dict

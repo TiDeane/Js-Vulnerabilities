@@ -9,8 +9,8 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "args": [
-                "./slices/2-expr-binary-ops.js",
-                "./patterns/2-expr-binary-ops.patterns.json"
+                "./slices/3a-expr-func-calls.js",
+                "./patterns/3a-expr-func-calls.patterns.json"
             ]
         }
     ]
