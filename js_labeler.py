@@ -337,6 +337,7 @@ def label_ifstmt(node):
     global new_identifiers
     if isinstance(node, dict):
         if 'alternate' in node:
+            # create copy to be used in 'else'
             new_identifiers_copy = copy.deepcopy(new_identifiers)
 
         new_identifiers_level.append({})
@@ -351,6 +352,7 @@ def label_ifstmt(node):
         new_identifiers_level.pop()
 
         if 'alternate' in node:
+            # use the copy before traversing 'if' and save that copy to merge later
             new_identifiers_copy, new_identifiers = new_identifiers, new_identifiers_copy
             
             new_identifiers_level.append({})
@@ -362,6 +364,7 @@ def label_ifstmt(node):
 
             new_identifiers_level.pop()
 
+            # merge 'new_identifiers' (TODO: I think this overwrites the identifier but it should save both)
             new_identifiers = {**new_identifiers_copy, **new_identifiers}
 
 def label_block(node):
