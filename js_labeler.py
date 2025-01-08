@@ -123,6 +123,14 @@ class LabelList:
             if source.vuln == vuln and source.source == identifier:
                 return True
         return False
+    
+    def equals(self, other):
+        source_pairs = zip(self.sources, other.sources)
+        if any(x != y for x, y in source_pairs) or (not self.sources and not other.sources):
+            sink_pairs = zip(self.sinks, other.sinks)
+            if any(x != y for x, y in sink_pairs) or (not self.sinks and not other.sinks):
+                return True
+        return False
 
     def to_dict(self):
         """Convert the LabelList to a dictionary."""
@@ -202,6 +210,8 @@ def traverse(node, left=True, attr=False):
                 label_ifstmt(node)
             case 'BlockStatement':
                 label_block(node)
+            case 'WhileStatement':
+                label_whilestmt(node)
             case _:
                 print("Error: Unknown node type")
 
@@ -229,7 +239,8 @@ def label_assignment(node):
         node['LabelList'].sinks += copy.deepcopy(right['LabelList'].sinks)
         
         for source in right['LabelList'].sources:  # Copy sources
-            node['LabelList'].sources.append(copy.deepcopy(source))
+            if not node['LabelList'].inSources(source.vuln, source.source):
+                node['LabelList'].sources.append(copy.deepcopy(source))
             
         LabelList.findExplicitVulns(left['LabelList'].sinks, right['LabelList'].sources, node['loc']['start']['line'])  # Add new explicit vulnerabilities found
 
@@ -260,10 +271,7 @@ def label_identifier_right(node, attr=False):
                     node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, "yes", [], node['loc']['start']['line'], pattern['sanitizers']))
             if any(identifier in d for d in new_identifiers_level):
                 in_new_identifiers_level = True
-                if identifier in new_identifiers_level[-1]:
-                    # this should only be matter when going down a level
-                    node['LabelList'].sources += copy.deepcopy(new_identifiers_level[-1][identifier].sources)
-                    node['LabelList'].sinks += copy.deepcopy(new_identifiers_level[-1][identifier].sinks)
+                
         if not in_new_identifiers_level:         # Else add the sources and sinks from the vuln_dict directly, if there is no information about the identifier assume all sources or sinks
             source_patterns, sink_patterns = searchVulnerabilityDict(identifier)
             sanitizer = isSanitizer(identifier)
@@ -315,8 +323,10 @@ def label_call(node):
 
             for source in arg['LabelList'].sources:     # Check for sanitization and add sources
                 if callee['name'] in source.sanitizers:
-                    source.sanitized.append([callee['name'], node['loc']['start']['line']])
-                    source.unsanitized = "no"
+                    # only add if not already exists
+                    if [callee['name'], node['loc']['start']['line']] not in source.sanitized:
+                        source.sanitized.append([callee['name'], node['loc']['start']['line']])
+                        source.unsanitized = "no"
 
                 node['LabelList'].sources.append(copy.deepcopy(source))
  
@@ -364,7 +374,7 @@ def label_ifstmt(node):
 
             new_identifiers_level.pop()
 
-            # merge 'new_identifiers' (TODO: I think this overwrites the identifier but it should save both)
+            # merge 'new_identifiers'
             new_identifiers = {**new_identifiers_copy, **new_identifiers}
 
 def label_block(node):
@@ -374,6 +384,29 @@ def label_block(node):
             traverse(expr)
             node['LabelList'].sinks = copy.deepcopy(expr['LabelList'].sinks)
             node['LabelList'].sources = copy.deepcopy(expr['LabelList'].sources)
+
+def label_whilestmt(node):
+    if isinstance(node, dict):
+        new_identifiers_level.append({})
+        node['LabelList'] = LabelList()
+
+        while True: # just to test
+
+            node_label_list_copy = copy.deepcopy(node['LabelList'])
+            
+            # need to traverse the test_stmt?
+
+            body_stmt = node['body']
+            traverse(body_stmt)
+
+            node['LabelList'].sinks = copy.deepcopy(body_stmt['LabelList'].sinks)
+            node['LabelList'].sources = copy.deepcopy(body_stmt['LabelList'].sources)
+    
+            if node_label_list_copy.equals(node['LabelList']):
+                break
+            
+
+        new_identifiers_level.pop()
 
 def main(vulnDict, root):
     global vuln_dict
