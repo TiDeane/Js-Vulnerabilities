@@ -260,13 +260,20 @@ def label_identifier_right(node, attr=False):
                     node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, "yes", [], node['loc']['start']['line'], pattern['sanitizers']))
             if any(identifier in d for d in new_identifiers_level):
                 in_new_identifiers_level = True
+                if identifier in new_identifiers_level[-1]:
+                    # this should only be matter when going down a level
+                    node['LabelList'].sources += copy.deepcopy(new_identifiers_level[-1][identifier].sources)
+                    node['LabelList'].sinks += copy.deepcopy(new_identifiers_level[-1][identifier].sinks)
         if not in_new_identifiers_level:         # Else add the sources and sinks from the vuln_dict directly, if there is no information about the identifier assume all sources or sinks
+            print(f"node '{node['name']}' in {node['loc']['start']}")
             source_patterns, sink_patterns = searchVulnerabilityDict(identifier)
+            print("SOURCE PATTERNS")
+            print(source_patterns)
             sanitizer = isSanitizer(identifier)
             if not sanitizer and not attr:
-                if source_patterns == [] and not sanitizer:
+                if source_patterns == []:
                     node['LabelList'].sources += addAllSources(identifier, node['loc']['start']['line'])
-                if sink_patterns == [] and not sanitizer:
+                if sink_patterns == []:
                     node['LabelList'].sinks += addAllSinks(identifier, node['loc']['start']['line'])
 
             for pattern in source_patterns:
@@ -339,7 +346,7 @@ def label_ifstmt(node):
         traverse(then_stmt)
         node['LabelList'].sinks = copy.deepcopy(then_stmt['LabelList'].sinks)
         node['LabelList'].sources = copy.deepcopy(then_stmt['LabelList'].sources)
-       
+
         new_identifiers_level.pop()
 
         if 'alternate' in node:
@@ -365,5 +372,11 @@ def main(vulnDict, root):
     vuln_dict = vulnDict
     traverse(root)
     addSequentialIds()
+    """
+    print(new_identifiers)
+    for id in new_identifiers:
+        print(id)
+        print(new_identifiers[id])
+    """
     with open(f"test_tree.json", "w") as outfile: 
         json.dump([vuln.to_dict() for vuln in vulnerabilities], outfile, indent=4)
