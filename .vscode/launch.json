@@ -9,8 +9,8 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "args": [
-                "./slices/4b-conds-branching.js",
-                "./patterns/4b-conds-branching.patterns.json"
+                "./slices/3a-expr-func-calls.js",
+                "./patterns/3a-expr-func-calls.patterns.json"
             ]
         }
     ]

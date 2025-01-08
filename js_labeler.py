@@ -18,6 +18,8 @@ def addSequentialIds():
 def addVulnerability(new_vuln: Vuln):
         for vuln in vulnerabilities:
             if vuln.vuln == new_vuln.vuln and vuln.source == new_vuln.source and vuln.sink == new_vuln.sink and vuln.sourceline == new_vuln.sourceline and vuln.sinkline == new_vuln.sinkline:
+                if new_vuln.sanitized_flows == vuln.sanitized_flows:
+                    return
                 vuln.sanitized_flows += new_vuln.sanitized_flows
                 vuln.unsanitized_flows = "yes" if new_vuln.sanitized_flows == [] else vuln.unsanitized_flows
                 return
@@ -71,6 +73,9 @@ class Source(Label):
         self.unsanitized = unsanitized
         self.sanitized = sanitized
         self.sanitizers = copy.copy(sanitizers)
+        
+    def equals(self, other):
+        return self.vuln == other.vuln and self.source == other.source and self.sanitized == other.sanitized
 
     def to_dict(self):
         """Convert Source object to a dictionary."""
@@ -90,6 +95,9 @@ class Sink(Label):
         self.vuln = vuln
         self.sink = sink
         self.implicit = implicit
+        
+    def equals(self, other):
+        return self.vuln == other.vuln and self.sink == other.sink and self.implicit == other.implicit
 
     def to_dict(self):
         """Convert Sink object to a dictionary."""
@@ -124,6 +132,13 @@ class LabelList:
             if sink.vuln == vuln and sink.sink == identifier:
                 return True
         return False
+    
+    def equals(self, other):
+        if len(self.sources) != len(other.sources) or len(self.sinks) != len(other.sinks):
+            return False
+
+        return all(any(obj1.equals(obj2) for obj2 in other.sources) for obj1 in self.sources) and all(any(obj1.equals(obj2) for obj2 in other.sinks) for obj1 in self.sinks)
+
 
     def to_dict(self):
         """Convert the LabelList to a dictionary."""
@@ -202,6 +217,8 @@ def traverse(node, left=True, func=False):
                 label_ifstmt(node)
             case 'BlockStatement':
                 label_block(node)
+            case 'WhileStatement':
+                label_whilestmt(node)
             case _:
                 print("Error: Unknown node type")
 
@@ -226,10 +243,13 @@ def label_assignment(node):
         traverse(left)
         traverse(right, False)
         node['LabelList'].sinks = copy.deepcopy(left['LabelList'].sinks)
-        node['LabelList'].sinks += copy.deepcopy(right['LabelList'].sinks)
+        for sink in copy.deepcopy(right['LabelList'].sinks):
+            if not node['LabelList'].inSinks(sink.vuln, sink.sink):
+                node['LabelList'].sinks.append(sink)
         
         for source in right['LabelList'].sources:  # Copy sources
-            node['LabelList'].sources.append(copy.deepcopy(source))
+            if not node['LabelList'].inSources(source.vuln, source.source):
+                node['LabelList'].sources.append(copy.deepcopy(source))
             
         LabelList.findExplicitVulns(left['LabelList'].sinks, right['LabelList'].sources, node['loc']['start']['line'])  # Add new explicit vulnerabilities found
 
@@ -319,8 +339,9 @@ def label_call(node):
 
             for source in arg['LabelList'].sources:     # Check for sanitization and add sources
                 if callee['name'] in source.sanitizers:
-                    source.sanitized.append([callee['name'], node['loc']['start']['line']])
-                    source.unsanitized = "no"
+                    if [callee['name'], node['loc']['start']['line']] not in source.sanitized:
+                        source.sanitized.append([callee['name'], node['loc']['start']['line']])
+                        source.unsanitized = "no"
 
                 node['LabelList'].sources.append(copy.deepcopy(source))
                 
@@ -369,9 +390,35 @@ def label_block(node):
         node['LabelList'] = LabelList()
         for expr in node['body']:
             traverse(expr)
-            node['LabelList'].sinks = copy.deepcopy(expr['LabelList'].sinks)
-            node['LabelList'].sources = copy.deepcopy(expr['LabelList'].sources)
+            node['LabelList'].sinks += copy.deepcopy(expr['LabelList'].sinks)
+            node['LabelList'].sources += copy.deepcopy(expr['LabelList'].sources)
+            
+def label_whilestmt(node):
+    if isinstance(node, dict):
+        node['LabelList'] = LabelList()
 
+        global active_contexts
+        skip_contexts = []    # A while loop creates a branch where the body is not executed and one where it is
+        
+        while True: # just to test
+            
+            skip_contexts += copy.deepcopy(active_contexts)
+            
+            node_label_list_copy = copy.deepcopy(node['LabelList'])
+            
+            # need to traverse the test_stmt?
+
+            body_stmt = node['body']
+            traverse(body_stmt)
+
+            node['LabelList'].sinks = copy.deepcopy(body_stmt['LabelList'].sinks)
+            node['LabelList'].sources = copy.deepcopy(body_stmt['LabelList'].sources)
+    
+            if node_label_list_copy.equals(node['LabelList']):
+                break
+
+        active_contexts += skip_contexts
+        
 
 def main(vulnDict, root):
     global vuln_dict

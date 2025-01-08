@@ -2,26 +2,12 @@
     {
         "vulnerability": "B_1",
         "source": [
-            "b",
-            1
+            "f",
+            4
         ],
         "sink": [
             "c",
-            2
-        ],
-        "unsanitized_flows": "yes",
-        "sanitized_flows": [],
-        "implicit": "no"
-    },
-    {
-        "vulnerability": "B_2",
-        "source": [
-            "e",
-            2
-        ],
-        "sink": [
-            "c",
-            2
+            3
         ],
         "unsanitized_flows": "yes",
         "sanitized_flows": [],
@@ -34,11 +20,18 @@
             1
         ],
         "sink": [
-            "e",
-            3
+            "h",
+            7
         ],
         "unsanitized_flows": "yes",
-        "sanitized_flows": [],
+        "sanitized_flows": [
+            [
+                [
+                    "d",
+                    3
+                ]
+            ]
+        ],
         "implicit": "no"
     }
 ]

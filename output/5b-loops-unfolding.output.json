@@ -7,21 +7,7 @@
         ],
         "sink": [
             "c",
-            2
-        ],
-        "unsanitized_flows": "yes",
-        "sanitized_flows": [],
-        "implicit": "no"
-    },
-    {
-        "vulnerability": "B_2",
-        "source": [
-            "e",
-            2
-        ],
-        "sink": [
-            "c",
-            2
+            5
         ],
         "unsanitized_flows": "yes",
         "sanitized_flows": [],
@@ -34,11 +20,18 @@
             1
         ],
         "sink": [
-            "e",
-            3
+            "q",
+            11
         ],
         "unsanitized_flows": "yes",
-        "sanitized_flows": [],
+        "sanitized_flows": [
+            [
+                [
+                    "s",
+                    9
+                ]
+            ]
+        ],
         "implicit": "no"
     }
 ]
