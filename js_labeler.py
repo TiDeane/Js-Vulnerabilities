@@ -265,10 +265,7 @@ def label_identifier_right(node, attr=False):
                     node['LabelList'].sources += copy.deepcopy(new_identifiers_level[-1][identifier].sources)
                     node['LabelList'].sinks += copy.deepcopy(new_identifiers_level[-1][identifier].sinks)
         if not in_new_identifiers_level:         # Else add the sources and sinks from the vuln_dict directly, if there is no information about the identifier assume all sources or sinks
-            print(f"node '{node['name']}' in {node['loc']['start']}")
             source_patterns, sink_patterns = searchVulnerabilityDict(identifier)
-            print("SOURCE PATTERNS")
-            print(source_patterns)
             sanitizer = isSanitizer(identifier)
             if not sanitizer and not attr:
                 if source_patterns == []:
@@ -337,7 +334,11 @@ def label_binaryexpr(node):
         node['LabelList'].sources = copy.deepcopy(left['LabelList'].sources) + copy.deepcopy(right['LabelList'].sources)
 
 def label_ifstmt(node):
+    global new_identifiers
     if isinstance(node, dict):
+        if 'alternate' in node:
+            new_identifiers_copy = copy.deepcopy(new_identifiers)
+
         new_identifiers_level.append({})
 
         node['LabelList'] = LabelList()
@@ -350,6 +351,8 @@ def label_ifstmt(node):
         new_identifiers_level.pop()
 
         if 'alternate' in node:
+            new_identifiers_copy, new_identifiers = new_identifiers, new_identifiers_copy
+            
             new_identifiers_level.append({})
 
             else_stmt = node['alternate']
@@ -358,6 +361,8 @@ def label_ifstmt(node):
             node['LabelList'].sources = copy.deepcopy(else_stmt['LabelList'].sources)
 
             new_identifiers_level.pop()
+
+            new_identifiers = {**new_identifiers_copy, **new_identifiers}
 
 def label_block(node):
     if isinstance(node, dict):
@@ -372,11 +377,6 @@ def main(vulnDict, root):
     vuln_dict = vulnDict
     traverse(root)
     addSequentialIds()
-    """
-    print(new_identifiers)
-    for id in new_identifiers:
-        print(id)
-        print(new_identifiers[id])
-    """
+
     with open(f"test_tree.json", "w") as outfile: 
         json.dump([vuln.to_dict() for vuln in vulnerabilities], outfile, indent=4)
