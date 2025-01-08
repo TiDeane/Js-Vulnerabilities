@@ -4,7 +4,7 @@ import json
 import copy
 
 vulnerabilities = []  # List of found vulnerabilities
-new_identifiers = {}  # Dict of identifier to their LabelList to keep track of new declared identifiers and the vulnerabilities
+active_contexts = [{}]  # List of contexts (Dict of identifier to their LabelList to keep track of new declared identifiers)
 
 def addSequentialIds():             
     sequentialIds = {}
@@ -118,6 +118,12 @@ class LabelList:
             if source.vuln == vuln and source.source == identifier:
                 return True
         return False
+    
+    def inSinks(self, vuln, identifier):
+        for sink in self.sinks:
+            if sink.vuln == vuln and sink.sink == identifier:
+                return True
+        return False
 
     def to_dict(self):
         """Convert the LabelList to a dictionary."""
@@ -173,7 +179,7 @@ def isSanitizer(identifier):
     return False
           
 # Traverses every node in the AST
-def traverse(node, left=True):
+def traverse(node, left=True, func=False):
     if isinstance(node, dict):
         match node.get('type'):
             case 'Program':
@@ -185,13 +191,17 @@ def traverse(node, left=True):
             case 'Identifier' if left:
                 label_identifier_left(node)
             case 'Identifier' if not left:
-                label_identifier_right(node)
+                label_identifier_right(node, func)
             case 'CallExpression':
                 label_call(node)
             case 'Literal':
                 label_literal(node)
             case 'BinaryExpression':
                 label_binaryexpr(node)
+            case 'IfStatement':
+                label_ifstmt(node)
+            case 'BlockStatement':
+                label_block(node)
             case _:
                 print("Error: Unknown node type")
 
@@ -223,8 +233,8 @@ def label_assignment(node):
             
         LabelList.findExplicitVulns(left['LabelList'].sinks, right['LabelList'].sources, node['loc']['start']['line'])  # Add new explicit vulnerabilities found
 
-        
-        new_identifiers[left['name']] = node['LabelList']  # Add left identifier and LabelList for future use
+        for context in active_contexts:
+            context[left['name']] = node['LabelList']  # Add left identifier and LabelList for future use
              
         
 def label_identifier_left(node):
@@ -236,35 +246,45 @@ def label_identifier_left(node):
         for pattern in sink_patterns:
             node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, pattern['implicit'], node['loc']['start']['line']))
 
-def label_identifier_right(node):
+def label_identifier_right(node, func):
     if isinstance(node, dict):
         node['LabelList'] = LabelList()
         identifier = node['name']
 
-        if identifier in new_identifiers:        # If the identifier is already registered get its label, and add any remaining sources it may have
-            node['LabelList'] = copy.deepcopy(new_identifiers[identifier])
-            source_patterns = searchVulnerabilityDictSources(identifier)
-            for pattern in source_patterns:
-                if not node['LabelList'].inSources(pattern['vulnerability'], identifier):
-                    node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, "yes", [], node['loc']['start']['line'], pattern['sanitizers']))
-                    
-        else:                                    # Else add the sources and sinks from the vuln_dict directly, if there is no information about the identifier assume all sources or sinks
-            source_patterns, sink_patterns = searchVulnerabilityDict(identifier)
-            sanitizer = isSanitizer(identifier)
-            if source_patterns == [] and not sanitizer:
-                node['LabelList'].sources = addAllSources(identifier, node['loc']['start']['line'])
-            if sink_patterns == [] and not sanitizer:
-                node['LabelList'].sinks = addAllSinks(identifier, node['loc']['start']['line'])
+        for context in active_contexts:
+            if identifier in context:        # If the identifier is already registered get its label, and add any remaining sources it may have
+                node['LabelList'].sinks += copy.deepcopy(context[identifier].sinks)
+                node['LabelList'].sources += copy.deepcopy(context[identifier].sources)
+                source_patterns = searchVulnerabilityDictSources(identifier)
+                for pattern in source_patterns:
+                    if not node['LabelList'].inSources(pattern['vulnerability'], identifier):
+                        node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, "yes", [], node['loc']['start']['line'], pattern['sanitizers']))
+                
+            else:                                   # Else add the sources and sinks from the vuln_dict directly, if there is no information about the identifier assume all sources or sinks
+                source_patterns, sink_patterns = searchVulnerabilityDict(identifier)
+                sanitizer = isSanitizer(identifier)
 
-            for pattern in source_patterns:
-                node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, "yes", [], node['loc']['start']['line'], pattern['sanitizers']))
-            for pattern in sink_patterns:
-                node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, pattern['implicit'], node['loc']['start']['line']))   
+                if source_patterns == [] and not sanitizer and not func:
+                    for source in addAllSources(identifier, node['loc']['start']['line']):
+                        if not node['LabelList'].inSources(source.vuln, source.source):
+                            node['LabelList'].sources.append(Source(source.vuln, source.source, "yes", [], node['loc']['start']['line'], source.sanitizers))
+            
+                if sink_patterns == [] and not sanitizer and not func:
+                    for sink in addAllSinks(identifier, node['loc']['start']['line']):
+                        if not node['LabelList'].inSinks(sink.vuln, sink.sink):
+                            node['LabelList'].sinks.append(Sink(sink.vuln, sink.sink, sink.implicit, node['loc']['start']['line']))
+
+                for pattern in source_patterns:
+                    if not node['LabelList'].inSources(pattern['vulnerability'], identifier):
+                        node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, "yes", [], node['loc']['start']['line'], pattern['sanitizers']))
+                for pattern in sink_patterns:
+                    if not node['LabelList'].inSinks(pattern['vulnerability'], identifier):
+                        node['LabelList'].sinks.append(Sink(pattern['vulnerability'], identifier, pattern['implicit'], node['loc']['start']['line']))   
                 
 def addAllSources(identifier, line):
     result = []
     for pattern in vuln_dict:
-        result.append(Source(pattern['vulnerability'], identifier, "yes", [], line, []))
+        result.append(Source(pattern['vulnerability'], identifier, "yes", [], line, pattern['sanitizers']))
         
     return result
 
@@ -284,7 +304,7 @@ def label_call(node):
         callee = node["callee"]
         node['LabelList'] = LabelList()
     
-        traverse(callee, False)
+        traverse(callee, False, func=True)
         
         for source in callee['LabelList'].sources:     # Copy callee's sources and sinks
             node['LabelList'].sources.append(Source(source.vuln, source.source, source.unsanitized, source.sanitized, node['loc']['start']['line'], source.sanitizers))
@@ -316,6 +336,42 @@ def label_binaryexpr(node):
         traverse(right, False)
         node['LabelList'].sinks = copy.deepcopy(left['LabelList'].sinks) + copy.deepcopy(right['LabelList'].sinks)
         node['LabelList'].sources = copy.deepcopy(left['LabelList'].sources) + copy.deepcopy(right['LabelList'].sources)
+        
+def label_ifstmt(node):
+    if isinstance(node, dict):
+        node['LabelList'] = LabelList()
+        global active_contexts
+        
+        # When there is an 'if' the active_contexts will be duplicated, executing the 'then' and 'else' for each
+        else_contexts = copy.deepcopy(active_contexts)
+        
+        # do we need to traverse test_stmt?
+        
+        then_stmt = node['consequent']
+        traverse(then_stmt)                 # Traverse 'then' with the current active_contexts
+        then_contexts = copy.deepcopy(active_contexts)
+        node['LabelList'].sinks = copy.deepcopy(then_stmt['LabelList'].sinks)
+        node['LabelList'].sources = copy.deepcopy(then_stmt['LabelList'].sources)
+
+        if 'alternate' in node:
+            active_contexts = else_contexts
+            else_stmt = node['alternate']
+            traverse(else_stmt)            # Traverse 'else'
+            node['LabelList'].sinks = copy.deepcopy(else_stmt['LabelList'].sinks)
+            node['LabelList'].sources = copy.deepcopy(else_stmt['LabelList'].sources)
+        
+        active_contexts = then_contexts + else_contexts
+
+        
+        
+def label_block(node):
+    if isinstance(node, dict):
+        node['LabelList'] = LabelList()
+        for expr in node['body']:
+            traverse(expr)
+            node['LabelList'].sinks = copy.deepcopy(expr['LabelList'].sinks)
+            node['LabelList'].sources = copy.deepcopy(expr['LabelList'].sources)
+
 
 def main(vulnDict, root):
     global vuln_dict
