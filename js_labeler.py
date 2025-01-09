@@ -2,10 +2,11 @@ from __future__ import annotations
 from typing import List, Dict
 import json
 import copy
+from collections import deque
 
 vulnerabilities = []  # List of found vulnerabilities
 active_contexts = [{}]  # List of contexts (Dict of identifier to their LabelList to keep track of new declared identifiers)
-implicit_sources = []  # List of sources from the guard of the most recent if or while
+implicit_sources = deque([])  # List of sources from the guard of the most recent if or while
 
 def addSequentialIds():             
     sequentialIds = {}
@@ -257,10 +258,16 @@ def label_assignment(node):
         for source in right['LabelList'].sources:  # Copy sources
             if not node['LabelList'].inSources(source.vuln, source.source, source.implicit):
                 node['LabelList'].sources.append(copy.deepcopy(source))
-                
-        for source in implicit_sources:
-            if not node['LabelList'].inSources(source.vuln, source.source, source.implicit):
-                node['LabelList'].sources.append(copy.deepcopy(source))
+        
+        if implicit_sources != deque([]):
+            for source in implicit_sources[-1]:
+                if not node['LabelList'].inSources(source.vuln, source.source, source.implicit):
+                    node['LabelList'].sources.append(copy.deepcopy(source))
+                    """
+                    print("FROM IMPLICIT")
+                    print(node['loc']['start'])
+                    print(source)
+                    """
             
         LabelList.findExplicitVulns(left['LabelList'].sinks, right['LabelList'].sources, node['loc']['start']['line'])  # Add new explicit vulnerabilities found
         
@@ -348,8 +355,8 @@ def label_call(node):
 
         arguments = node["arguments"]
 
-        if implicit_sources != []:
-            for source in implicit_sources:
+        if implicit_sources != deque([]):
+            for source in implicit_sources[-1]:
                 if not node['LabelList'].inSources(source.vuln, source.source, source.implicit):
                     node['LabelList'].sources.append(copy.deepcopy(source))
                 
@@ -376,8 +383,8 @@ def label_binaryexpr(node):
         right = node['right']
         traverse(left, False)
         traverse(right, False)
-        node['LabelList'].sinks = copy.deepcopy(left['LabelList'].sinks) + copy.deepcopy(right['LabelList'].sinks)
-        node['LabelList'].sources = copy.deepcopy(left['LabelList'].sources) + copy.deepcopy(right['LabelList'].sources)
+        node['LabelList'].sinks += copy.deepcopy(left['LabelList'].sinks) + copy.deepcopy(right['LabelList'].sinks)
+        node['LabelList'].sources += copy.deepcopy(left['LabelList'].sources) + copy.deepcopy(right['LabelList'].sources)
 
 def label_memberexpr_left(node):
     if isinstance(node, dict):
@@ -417,8 +424,10 @@ def label_ifstmt(node):
         
         test_stmt = node['test']
         traverse(test_stmt)
+
+        implicit_sources.append([])
         for source in test_stmt['LabelList'].sources:
-            implicit_sources.append(Source(source.vuln, source.source, source.unsanitized, source.sanitized, source.line, source.sanitizers, implicit="yes"))
+            implicit_sources[-1].append(Source(source.vuln, source.source, source.unsanitized, source.sanitized, source.line, source.sanitizers, implicit="yes"))
         
         # When there is an 'if' the active_contexts will be duplicated, executing the 'then' and 'else' for each
         else_contexts = copy.deepcopy(active_contexts)
@@ -426,18 +435,18 @@ def label_ifstmt(node):
         then_stmt = node['consequent']
         traverse(then_stmt)                 # Traverse 'then' with the current active_contexts
         then_contexts = copy.deepcopy(active_contexts)
-        node['LabelList'].sinks = copy.deepcopy(then_stmt['LabelList'].sinks)
-        node['LabelList'].sources = copy.deepcopy(then_stmt['LabelList'].sources)
+        node['LabelList'].sinks += copy.deepcopy(then_stmt['LabelList'].sinks)
+        node['LabelList'].sources += copy.deepcopy(then_stmt['LabelList'].sources)
 
         if 'alternate' in node:
             active_contexts = else_contexts
             else_stmt = node['alternate']
             traverse(else_stmt)            # Traverse 'else'
-            node['LabelList'].sinks = copy.deepcopy(else_stmt['LabelList'].sinks)
-            node['LabelList'].sources = copy.deepcopy(else_stmt['LabelList'].sources)
-        
+            node['LabelList'].sinks += copy.deepcopy(else_stmt['LabelList'].sinks)
+            node['LabelList'].sources += copy.deepcopy(else_stmt['LabelList'].sources)
+
         active_contexts = then_contexts + else_contexts
-        implicit_sources = []
+        implicit_sources.pop()
 
         
         
@@ -459,8 +468,10 @@ def label_whilestmt(node):
         
         test_stmt = node['test']
         traverse(test_stmt)
+
+        implicit_sources.append([])
         for source in test_stmt['LabelList'].sources:
-            implicit_sources.append(Source(source.vuln, source.source, source.unsanitized, source.sanitized, source.line, source.sanitizers, implicit="yes"))
+            implicit_sources[-1].append(Source(source.vuln, source.source, source.unsanitized, source.sanitized, source.line, source.sanitizers, implicit="yes"))
 
         while True:
             
@@ -476,8 +487,9 @@ def label_whilestmt(node):
     
             if node_label_list_copy.equals(node['LabelList']):
                 break
+        
         active_contexts += skip_contexts
-        implicit_sources = []
+        implicit_sources.pop()
         
 
 def main(vulnDict, root):
