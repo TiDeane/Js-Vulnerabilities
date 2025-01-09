@@ -6,7 +6,7 @@ from collections import deque
 
 vulnerabilities = []  # List of found vulnerabilities
 active_contexts = [{}]  # List of contexts (Dict of identifier to their LabelList to keep track of new declared identifiers)
-implicit_sources = deque([])  # List of sources from the guard of the most recent if or while
+implicit_sources = deque()  # List of sources from the guard of the most recent if or while
 
 def addSequentialIds():             
     sequentialIds = {}
@@ -86,7 +86,8 @@ class Source(Label):
             "vulnerability": ["SOURCE_FOR_" + self.vuln, self.line],
             "source": self.source,
             "unsanitized": self.unsanitized,
-            "sanitized": self.sanitized
+            "sanitized": self.sanitized,
+            "implicit": self.implicit
         }
 
     def __str__(self):
@@ -106,7 +107,8 @@ class Sink(Label):
         """Convert Sink object to a dictionary."""
         return {
             "vulnerability": ["SINK_FOR_" + self.vuln, self.line],
-            "sink": self.sink
+            "sink": self.sink,
+            "implicit": self.implicit
         }
 
     def __str__(self):
@@ -259,15 +261,16 @@ def label_assignment(node):
             if not node['LabelList'].inSources(source.vuln, source.source, source.implicit):
                 node['LabelList'].sources.append(copy.deepcopy(source))
         
-        if implicit_sources != deque([]):
-            for source in implicit_sources[-1]:
-                if not node['LabelList'].inSources(source.vuln, source.source, source.implicit):
-                    node['LabelList'].sources.append(copy.deepcopy(source))
-                    """
-                    print("FROM IMPLICIT")
-                    print(node['loc']['start'])
-                    print(source)
-                    """
+        if implicit_sources != deque():
+            for context in implicit_sources:
+                for source in context:
+                    if not node['LabelList'].inSources(source.vuln, source.source, source.implicit):
+                        node['LabelList'].sources.append(copy.deepcopy(source))
+                        """
+                        print("FROM IMPLICIT")
+                        print(node['loc']['start'])
+                        print(source)
+                        """
             
         LabelList.findExplicitVulns(left['LabelList'].sinks, right['LabelList'].sources, node['loc']['start']['line'])  # Add new explicit vulnerabilities found
         
@@ -355,10 +358,11 @@ def label_call(node):
 
         arguments = node["arguments"]
 
-        if implicit_sources != deque([]):
-            for source in implicit_sources[-1]:
-                if not node['LabelList'].inSources(source.vuln, source.source, source.implicit):
-                    node['LabelList'].sources.append(copy.deepcopy(source))
+        if implicit_sources != deque():
+            for context in implicit_sources:
+                for source in context:
+                    if not node['LabelList'].inSources(source.vuln, source.source, source.implicit):
+                        node['LabelList'].sources.append(copy.deepcopy(source))
                 
             LabelList.findExplicitVulns(callee['LabelList'].sinks, node['LabelList'].sources, node['loc']['start']['line'])
 
@@ -370,12 +374,10 @@ def label_call(node):
                     if [callee['name'], node['loc']['start']['line']] not in source.sanitized:
                         source.sanitized.append([callee['name'], node['loc']['start']['line']])
                         source.unsanitized = "no"
-
                 node['LabelList'].sources.append(copy.deepcopy(source))
                 
             LabelList.findExplicitVulns(callee['LabelList'].sinks, arg['LabelList'].sources, node['loc']['start']['line'])
-            
-        
+
 def label_binaryexpr(node):
     if isinstance(node, dict):
         node['LabelList'] = LabelList()
@@ -427,7 +429,8 @@ def label_ifstmt(node):
 
         implicit_sources.append([])
         for source in test_stmt['LabelList'].sources:
-            implicit_sources[-1].append(Source(source.vuln, source.source, source.unsanitized, source.sanitized, source.line, source.sanitizers, implicit="yes"))
+            if not any(source_in.equals(source) for source_in in implicit_sources[-1]):
+                implicit_sources[-1].append(Source(source.vuln, source.source, source.unsanitized, source.sanitized, source.line, source.sanitizers, implicit="yes"))
         
         # When there is an 'if' the active_contexts will be duplicated, executing the 'then' and 'else' for each
         else_contexts = copy.deepcopy(active_contexts)
@@ -471,7 +474,8 @@ def label_whilestmt(node):
 
         implicit_sources.append([])
         for source in test_stmt['LabelList'].sources:
-            implicit_sources[-1].append(Source(source.vuln, source.source, source.unsanitized, source.sanitized, source.line, source.sanitizers, implicit="yes"))
+            if not any(source_in.equals(source) for source_in in implicit_sources[-1]):
+                implicit_sources[-1].append(Source(source.vuln, source.source, source.unsanitized, source.sanitized, source.line, source.sanitizers, implicit="yes"))
 
         while True:
             
