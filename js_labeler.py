@@ -145,7 +145,8 @@ class LabelList:
     def to_dict(self):
         """Convert the LabelList to a dictionary."""
         return {
-            "vulns": [vuln.to_dict() for vuln in self.vulns],
+            "sources": [source.to_dict() for source in self.sources],
+            "sinks": [sink.to_dict() for sink in self.sinks],
         }
 
     def __str__(self):
@@ -347,6 +348,13 @@ def label_call(node):
 
         arguments = node["arguments"]
 
+        if implicit_sources != []:
+            for source in implicit_sources:
+                if not node['LabelList'].inSources(source.vuln, source.source, source.implicit):
+                    node['LabelList'].sources.append(copy.deepcopy(source))
+                
+            LabelList.findExplicitVulns(callee['LabelList'].sinks, node['LabelList'].sources, node['loc']['start']['line'])
+
         for arg in arguments:
             traverse(arg, False)
 
@@ -468,7 +476,6 @@ def label_whilestmt(node):
     
             if node_label_list_copy.equals(node['LabelList']):
                 break
-
         active_contexts += skip_contexts
         implicit_sources = []
         
