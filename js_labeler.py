@@ -215,6 +215,10 @@ def traverse(node, left=True, func=False):
                 label_literal(node)
             case 'BinaryExpression':
                 label_binaryexpr(node)
+            case 'MemberExpression' if left:
+                label_memberexpr_left(node)
+            case 'MemberExpression' if not left:
+                label_memberexpr_right(node)
             case 'IfStatement':
                 label_ifstmt(node)
             case 'BlockStatement':
@@ -258,6 +262,9 @@ def label_assignment(node):
                 node['LabelList'].sources.append(copy.deepcopy(source))
             
         LabelList.findExplicitVulns(left['LabelList'].sinks, right['LabelList'].sources, node['loc']['start']['line'])  # Add new explicit vulnerabilities found
+        
+        if left['type'] == "MemberExpression":
+            return
 
         for context in active_contexts:
             context[left['name']] = node['LabelList']  # Add left identifier and LabelList for future use
@@ -363,7 +370,37 @@ def label_binaryexpr(node):
         traverse(right, False)
         node['LabelList'].sinks = copy.deepcopy(left['LabelList'].sinks) + copy.deepcopy(right['LabelList'].sinks)
         node['LabelList'].sources = copy.deepcopy(left['LabelList'].sources) + copy.deepcopy(right['LabelList'].sources)
+
+def label_memberexpr_left(node):
+    if isinstance(node, dict):
+        node['LabelList'] = LabelList()
+        obj = node['object']
+        attr = node['property']
+        traverse(obj, True)
+        traverse(attr, False, True)
+
+        node['LabelList'].sinks += copy.deepcopy(obj['LabelList'].sinks)
+        node['LabelList'].sources += copy.deepcopy(obj['LabelList'].sources)
+
+        node['LabelList'].sinks += copy.deepcopy(attr['LabelList'].sinks)
+        node['LabelList'].sources += copy.deepcopy(attr['LabelList'].sources)
+
+def label_memberexpr_right(node):
+    if isinstance(node, dict):
+        node['LabelList'] = LabelList()
+        obj = node['object']
+        attr = node['property']
+        traverse(obj, False)
+        traverse(attr, False, True)
+        for attr_source in attr['LabelList'].sources:
+            obj['LabelList'].sources.append(Source(attr_source.vuln, obj['name'], attr_source.unsanitized, attr_source.sanitized, node['loc']['start']['line'], attr_source.sanitizers))
         
+        node['LabelList'].sinks += copy.deepcopy(obj['LabelList'].sinks)
+        node['LabelList'].sources += copy.deepcopy(obj['LabelList'].sources)
+
+        node['LabelList'].sinks += copy.deepcopy(attr['LabelList'].sinks)
+        node['LabelList'].sources += copy.deepcopy(attr['LabelList'].sources)
+
 def label_ifstmt(node):
     if isinstance(node, dict):
         node['LabelList'] = LabelList()
@@ -410,14 +447,18 @@ def label_whilestmt(node):
 
         global active_contexts
         skip_contexts = []    # A while loop creates a branch where the body is not executed and one where it is
+        global implicit_sources
         
-        while True: # just to test
+        test_stmt = node['test']
+        traverse(test_stmt)
+        for source in test_stmt['LabelList'].sources:
+            implicit_sources.append(Source(source.vuln, source.source, source.unsanitized, source.sanitized, source.line, source.sanitizers, implicit="yes"))
+
+        while True:
             
             skip_contexts += copy.deepcopy(active_contexts)
             
             node_label_list_copy = copy.deepcopy(node['LabelList'])
-            
-            # need to traverse the test_stmt?
 
             body_stmt = node['body']
             traverse(body_stmt)
@@ -429,6 +470,7 @@ def label_whilestmt(node):
                 break
 
         active_contexts += skip_contexts
+        implicit_sources = []
         
 
 def main(vulnDict, root):

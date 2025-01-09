@@ -7,6 +7,7 @@ tests=(
   "2-expr-binary-ops"
   "3a-expr-func-calls"
   "3b-expr-func-calls"
+  "3c-expr-attributes"
   "4a-conds-branching"
   "4b-conds-branching"
   "5a-loops-unfolding"
@@ -15,6 +16,8 @@ tests=(
   "6a-sanitization"
   "6b-sanitization"
   "7-conds-implicit"
+  "8-loops-implicit"
+  "9-regions-guards"
 )
 
 # Loop through each test
