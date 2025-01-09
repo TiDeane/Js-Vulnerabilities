@@ -14,6 +14,7 @@ tests=(
   "5c-loops-unfolding"
   "6a-sanitization"
   "6b-sanitization"
+  "7-conds-implicit"
 )
 
 # Loop through each test

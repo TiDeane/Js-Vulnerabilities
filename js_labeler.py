@@ -5,6 +5,7 @@ import copy
 
 vulnerabilities = []  # List of found vulnerabilities
 active_contexts = [{}]  # List of contexts (Dict of identifier to their LabelList to keep track of new declared identifiers)
+implicit_sources = []  # List of sources from the guard of the most recent if or while
 
 def addSequentialIds():             
     sequentialIds = {}
@@ -66,13 +67,14 @@ class Vuln(Label):
         return json.dumps(self.to_dict(), indent=4)
 
 class Source(Label):
-    def __init__(self, vuln, source, unsanitized, sanitized, line, sanitizers):
+    def __init__(self, vuln, source, unsanitized, sanitized, line, sanitizers, implicit="no"):
         super().__init__(line)
         self.vuln = vuln
         self.source = source
         self.unsanitized = unsanitized
         self.sanitized = sanitized
         self.sanitizers = copy.copy(sanitizers)
+        self.implicit = implicit
         
     def equals(self, other):
         return self.vuln == other.vuln and self.source == other.source and self.sanitized == other.sanitized
@@ -118,12 +120,12 @@ class LabelList:
     def findExplicitVulns(sinks, sources, line):
         for sink in sinks:
             for source in sources:
-                if sink.vuln == source.vuln:
-                    addVulnerability(Vuln(sink.vuln, source.source, source.line, sink.sink, sink.line, source.unsanitized, source.sanitized, "no", line))
+                if sink.vuln == source.vuln and not (sink.implicit == "no" and source.implicit == "yes"):
+                    addVulnerability(Vuln(sink.vuln, source.source, source.line, sink.sink, sink.line, source.unsanitized, source.sanitized, source.implicit, line))
                     
-    def inSources(self, vuln, identifier):
+    def inSources(self, vuln, identifier, implicit = "no"):
         for source in self.sources:
-            if source.vuln == vuln and source.source == identifier:
+            if source.vuln == vuln and source.source == identifier and source.implicit == implicit:
                 return True
         return False
     
@@ -248,7 +250,11 @@ def label_assignment(node):
                 node['LabelList'].sinks.append(sink)
         
         for source in right['LabelList'].sources:  # Copy sources
-            if not node['LabelList'].inSources(source.vuln, source.source):
+            if not node['LabelList'].inSources(source.vuln, source.source, source.implicit):
+                node['LabelList'].sources.append(copy.deepcopy(source))
+                
+        for source in implicit_sources:
+            if not node['LabelList'].inSources(source.vuln, source.source, source.implicit):
                 node['LabelList'].sources.append(copy.deepcopy(source))
             
         LabelList.findExplicitVulns(left['LabelList'].sinks, right['LabelList'].sources, node['loc']['start']['line'])  # Add new explicit vulnerabilities found
@@ -277,7 +283,7 @@ def label_identifier_right(node, func):
                 node['LabelList'].sources += copy.deepcopy(context[identifier].sources)
                 source_patterns = searchVulnerabilityDictSources(identifier)
                 for pattern in source_patterns:
-                    if not node['LabelList'].inSources(pattern['vulnerability'], identifier):
+                    if not node['LabelList'].inSources(pattern['vulnerability'], identifier, pattern['implicit']):
                         node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, "yes", [], node['loc']['start']['line'], pattern['sanitizers']))
                 
             else:                                   # Else add the sources and sinks from the vuln_dict directly, if there is no information about the identifier assume all sources or sinks
@@ -286,7 +292,7 @@ def label_identifier_right(node, func):
 
                 if source_patterns == [] and not sanitizer and not func:
                     for source in addAllSources(identifier, node['loc']['start']['line']):
-                        if not node['LabelList'].inSources(source.vuln, source.source):
+                        if not node['LabelList'].inSources(source.vuln, source.source, source.implicit):
                             node['LabelList'].sources.append(Source(source.vuln, source.source, "yes", [], node['loc']['start']['line'], source.sanitizers))
             
                 if sink_patterns == [] and not sanitizer and not func:
@@ -295,7 +301,7 @@ def label_identifier_right(node, func):
                             node['LabelList'].sinks.append(Sink(sink.vuln, sink.sink, sink.implicit, node['loc']['start']['line']))
 
                 for pattern in source_patterns:
-                    if not node['LabelList'].inSources(pattern['vulnerability'], identifier):
+                    if not node['LabelList'].inSources(pattern['vulnerability'], identifier, pattern['implicit']):
                         node['LabelList'].sources.append(Source(pattern['vulnerability'], identifier, "yes", [], node['loc']['start']['line'], pattern['sanitizers']))
                 for pattern in sink_patterns:
                     if not node['LabelList'].inSinks(pattern['vulnerability'], identifier):
@@ -362,11 +368,15 @@ def label_ifstmt(node):
     if isinstance(node, dict):
         node['LabelList'] = LabelList()
         global active_contexts
+        global implicit_sources
+        
+        test_stmt = node['test']
+        traverse(test_stmt)
+        for source in test_stmt['LabelList'].sources:
+            implicit_sources.append(Source(source.vuln, source.source, source.unsanitized, source.sanitized, source.line, source.sanitizers, implicit="yes"))
         
         # When there is an 'if' the active_contexts will be duplicated, executing the 'then' and 'else' for each
         else_contexts = copy.deepcopy(active_contexts)
-        
-        # do we need to traverse test_stmt?
         
         then_stmt = node['consequent']
         traverse(then_stmt)                 # Traverse 'then' with the current active_contexts
@@ -382,6 +392,7 @@ def label_ifstmt(node):
             node['LabelList'].sources = copy.deepcopy(else_stmt['LabelList'].sources)
         
         active_contexts = then_contexts + else_contexts
+        implicit_sources = []
 
         
         
