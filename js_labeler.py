@@ -19,10 +19,14 @@ def addSequentialIds():
 def addVulnerability(new_vuln: Vuln):
         for vuln in vulnerabilities:
             if vuln.vuln == new_vuln.vuln and vuln.source == new_vuln.source and vuln.sink == new_vuln.sink and vuln.sourceline == new_vuln.sourceline and vuln.sinkline == new_vuln.sinkline:
-                if new_vuln.sanitized_flows == vuln.sanitized_flows:
+                if new_vuln.sanitized_flows == []:
+                    vuln.unsanitized_flows = "yes"
                     return
+                for sanitized in vuln.sanitized_flows:
+                    if new_vuln.sanitized_flows[0] == sanitized:
+                        return
                 vuln.sanitized_flows += new_vuln.sanitized_flows
-                vuln.unsanitized_flows = "yes" if new_vuln.sanitized_flows == [] else vuln.unsanitized_flows
+                vuln.unsanitized_flows = vuln.unsanitized_flows
                 return
         vulnerabilities.append(new_vuln)              # Adds a vulnerability or just a new flow if it already exists
         
@@ -143,7 +147,6 @@ class LabelList:
 
         return all(any(obj1.equals(obj2) for obj2 in other.sources) for obj1 in self.sources) and all(any(obj1.equals(obj2) for obj2 in other.sinks) for obj1 in self.sinks)
 
-
     def to_dict(self):
         """Convert the LabelList to a dictionary."""
         return {
@@ -263,14 +266,15 @@ def label_assignment(node):
         if implicit_sources != deque():
             for context in implicit_sources:
                 for source in context:
-                    if not node['LabelList'].inSources(source.vuln, source.source, source.implicit):
-                        node['LabelList'].sources.append(copy.deepcopy(source))
-                        """
-                        print("FROM IMPLICIT")
-                        print(node['loc']['start'])
-                        print(source)
-                        """
-            
+                    node['LabelList'].sources.append(copy.deepcopy(source))
+        
+        if right['type'] == 'CallExpression':
+            for source in node['LabelList'].sources:
+                if right['callee']['name'] in source.sanitizers:
+                    if [right['callee']['name'], node['loc']['start']['line']] not in source.sanitized:
+                        source.sanitized.append([right['callee']['name'], node['loc']['start']['line']])
+                        source.unsanitized = "no"
+
         LabelList.findExplicitVulns(left['LabelList'].sinks, right['LabelList'].sources, node['loc']['start']['line'])  # Add new explicit vulnerabilities found
         
         if left['type'] == "MemberExpression":
@@ -278,7 +282,6 @@ def label_assignment(node):
 
         for context in active_contexts:
             context[left['name']] = node['LabelList']  # Add left identifier and LabelList for future use
-             
         
 def label_identifier_left(node):
     if isinstance(node, dict):
@@ -451,9 +454,6 @@ def label_ifstmt(node):
 
         active_contexts = then_contexts + else_contexts
         
-
-        
-        
 def label_block(node):
     if isinstance(node, dict):
         node['LabelList'] = LabelList()
@@ -479,7 +479,6 @@ def label_whilestmt(node):
                 implicit_sources[-1].append(Source(source.vuln, source.source, source.unsanitized, source.sanitized, source.line, source.sanitizers, implicit="yes"))
 
         while True:
-            
             skip_contexts += copy.deepcopy(active_contexts)
             
             node_label_list_copy = copy.deepcopy(node['LabelList'])
@@ -492,7 +491,12 @@ def label_whilestmt(node):
     
             if node_label_list_copy.equals(node['LabelList']):
                 break
-        
+
+            traverse(test_stmt)
+            for source in test_stmt['LabelList'].sources:
+                if not any(source_in.equals(source) for source_in in implicit_sources[-1]):
+                    implicit_sources[-1].append(Source(source.vuln, source.source, source.unsanitized, source.sanitized, source.line, source.sanitizers, implicit="yes"))
+
         active_contexts += skip_contexts
         implicit_sources.pop()
         
