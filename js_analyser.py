@@ -1,8 +1,8 @@
 import esprima
 import sys
 import json
-from typing import Dict, List
 from js_labeler import main
+import difflib
 
 global vuln_dict
 
@@ -17,8 +17,6 @@ ast_dict = esprima.parseScript(program, loc = True).toDict()
 # Read vulnerabilities
 with open(sys.argv[2], 'r') as file:
     vuln_dict = json.load(file)
-
-print(vuln_dict)
 
 # Save dict to json
 with open(f"{sys.argv[1]}_tree.json", "w") as outfile: 
