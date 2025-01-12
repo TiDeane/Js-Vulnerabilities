@@ -453,8 +453,6 @@ def label_ifstmt(node):
         node['LabelList'].sinks += copy.deepcopy(then_stmt['LabelList'].sinks)
         node['LabelList'].sources += copy.deepcopy(then_stmt['LabelList'].sources)
         
-        implicit_sources.pop()
-
         if 'alternate' in node:
             active_contexts = else_contexts
             else_stmt = node['alternate']
@@ -463,6 +461,8 @@ def label_ifstmt(node):
             node['LabelList'].sources += copy.deepcopy(else_stmt['LabelList'].sources)
 
         active_contexts = then_contexts + else_contexts
+
+        implicit_sources.pop()
         
 def label_block(node):
     if isinstance(node, dict):
