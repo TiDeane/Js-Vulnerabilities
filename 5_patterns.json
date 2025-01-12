@@ -1,0 +1,37 @@
+[
+  {
+    "vulnerability": "SQL Injection",
+    "sources": ["req.body", "req.query", "req.params"],
+    "sanitizers": ["sql-escape-string"],
+    "sinks": ["db.query", "db.execute", "db.raw"],
+    "implicit": "no"
+  },
+  {
+    "vulnerability": "Open Redirect",
+    "sources": ["req.query", "req.headers.referer", "req.body"],
+    "sanitizers": [],
+    "sinks": ["res.redirect", "window.location", "document.location"],
+    "implicit": "no"
+  },
+  {
+    "vulnerability": "Insecure Deserialization",
+    "sources": ["req.body"],
+    "sanitizers": [],
+    "sinks": ["JSON.parse", "eval"],
+    "implicit": "no"
+  },
+  {
+    "vulnerability": "Remote Code Execution",
+    "sources": ["req.body", "websocket", "req.query"],
+    "sanitizers": [],
+    "sinks": ["eval", "setTimeout", "setInterval"],
+    "implicit": "no"
+  },
+  {
+    "vulnerability": "File Inclusion",
+    "sources": ["req.query", "req.body"],
+    "sanitizers": ["path.resolve", "path.normalize"],
+    "sinks": ["require", "fs.readFileSync", "fs.createReadStream"],
+    "implicit": "no"
+  }  
+]
