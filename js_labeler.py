@@ -14,7 +14,7 @@ def addSequentialIds():
             sequentialIds[vuln.vuln[0]] += 1
         else:
             sequentialIds[vuln.vuln[0]] = 1
-        vuln.vuln += "_" + str(sequentialIds[vuln.vuln[0]])     # Adds a number to each of the vulnerablities (B_1, B_2 Etc)
+        vuln.vuln += "_" + str(sequentialIds[vuln.vuln[0]]) # Adds a number to each of the vulnerablities (B_1, B_2 Etc)
 
 def addVulnerability(new_vuln: Vuln):
         for vuln in vulnerabilities:
@@ -28,7 +28,7 @@ def addVulnerability(new_vuln: Vuln):
                 vuln.sanitized_flows += new_vuln.sanitized_flows
                 vuln.unsanitized_flows = vuln.unsanitized_flows
                 return
-        vulnerabilities.append(new_vuln)              # Adds a vulnerability or just a new flow if it already exists
+        vulnerabilities.append(new_vuln) # Adds a vulnerability or just a new flow if it already exists
         
 class Label:
     def __init__(self, line):
@@ -219,6 +219,8 @@ def traverse(node, left=True, func=False):
                 label_call(node)
             case 'Literal':
                 label_literal(node)
+            case 'UnaryExpression':
+                label_unaryexpr(node)
             case 'BinaryExpression':
                 label_binaryexpr(node)
             case 'MemberExpression' if left:
@@ -380,6 +382,14 @@ def label_call(node):
                 
             LabelList.findExplicitVulns(callee['LabelList'].sinks, arg['LabelList'].sources, node['loc']['start']['line'])
 
+def label_unaryexpr(node):
+    if isinstance(node, dict):
+        node['LabelList'] = LabelList()
+        argument = node['argument']
+        traverse(argument, False)
+        node['LabelList'].sinks += copy.deepcopy(argument['LabelList'].sinks)
+        node['LabelList'].sources += copy.deepcopy(argument['LabelList'].sources)
+
 def label_binaryexpr(node):
     if isinstance(node, dict):
         node['LabelList'] = LabelList()
@@ -501,10 +511,11 @@ def label_whilestmt(node):
         implicit_sources.pop()
         
 
-def main(vulnDict, root):
+def main(vulnDict, root, slice_path):
     global vuln_dict
     vuln_dict = vulnDict
     traverse(root)
     addSequentialIds()
-    with open(f"test_tree.json", "w") as outfile: 
+    output_path = "output/" + slice_path[:-3] + ".output.json"
+    with open(f"{output_path}", "w") as outfile: 
         json.dump([vuln.to_dict() for vuln in vulnerabilities], outfile, indent=4)

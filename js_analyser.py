@@ -18,8 +18,8 @@ ast_dict = esprima.parseScript(program, loc = True).toDict()
 with open(sys.argv[2], 'r') as file:
     vuln_dict = json.load(file)
 
-# Save dict to json
-with open(f"{sys.argv[1]}_tree.json", "w") as outfile: 
-    json.dump(ast_dict, outfile, indent=2)
+# Save tree to json
+#with open(f"{sys.argv[1]}_tree.json", "w") as outfile: 
+#    json.dump(ast_dict, outfile, indent=2)
 
-main(vuln_dict, ast_dict)
+main(vuln_dict, ast_dict, sys.argv[1])
